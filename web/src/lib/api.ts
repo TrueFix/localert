@@ -48,6 +48,7 @@ export function retentionLabel(value: Retention) {
 export type SetupStatus = {
   setup_required: boolean
   legacy_token_required: boolean
+  password_recovery: boolean
   local_setup_allowed: boolean
 }
 

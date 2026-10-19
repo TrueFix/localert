@@ -241,7 +241,28 @@ func localRequest(r *http.Request) bool {
 			return true
 		}
 	}
+	// Host browser on localhost while RemoteAddr is a container bridge gateway (Docker, etc.).
+	if hostLooksLocalhost(r) && dockerBridgeGateway(ip) {
+		return true
+	}
 	return false
+}
+
+func hostLooksLocalhost(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = r.Host
+	}
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+func dockerBridgeGateway(ip net.IP) bool {
+	ip = ip.To4()
+	if ip == nil {
+		return false
+	}
+	return ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 && ip[3] == 1
 }
 
 func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {

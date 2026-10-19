@@ -29,7 +29,7 @@ import (
 	"localert/web"
 )
 
-var version = "0.5.4"
+var version = "0.5.5"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {

@@ -27,12 +27,19 @@ var (
 type SetupStatus struct {
 	SetupRequired       bool `json:"setup_required"`
 	LegacyTokenRequired bool `json:"legacy_token_required"`
+	PasswordRecovery    bool `json:"password_recovery"`
 }
 
 func (s *Store) SetupStatus() (SetupStatus, error) {
-	var configured, legacy int
-	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM admin WHERE id = 1), EXISTS(SELECT 1 FROM metadata WHERE key = 'legacy_admin_hash')").Scan(&configured, &legacy)
-	return SetupStatus{SetupRequired: configured == 0, LegacyTokenRequired: legacy != 0 && configured == 0}, err
+	var configured, legacy, recovery int
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM admin WHERE id = 1),
+		EXISTS(SELECT 1 FROM metadata WHERE key = 'legacy_admin_hash'),
+		EXISTS(SELECT 1 FROM metadata WHERE key = 'password_recovery' AND value = '1')`).Scan(&configured, &legacy, &recovery)
+	return SetupStatus{
+		SetupRequired:       configured == 0,
+		LegacyTokenRequired: legacy != 0 && configured == 0,
+		PasswordRecovery:    configured == 0 && recovery != 0,
+	}, err
 }
 
 func (s *Store) Setup(password, legacyToken string) error {
@@ -79,7 +86,7 @@ func (s *Store) Setup(password, legacyToken string) error {
 	if count == 0 {
 		return ErrAlreadyConfigured
 	}
-	if _, err := tx.Exec("DELETE FROM metadata WHERE key = 'legacy_admin_hash'"); err != nil {
+	if _, err := tx.Exec("DELETE FROM metadata WHERE key IN ('legacy_admin_hash', 'password_recovery')"); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -149,6 +156,10 @@ func (s *Store) ResetPassword() error {
 		return err
 	}
 	if _, err := tx.Exec("DELETE FROM metadata WHERE key = 'legacy_admin_hash'"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO metadata (key, value) VALUES ('password_recovery', '1')
+		ON CONFLICT(key) DO UPDATE SET value = '1'`); err != nil {
 		return err
 	}
 	return tx.Commit()

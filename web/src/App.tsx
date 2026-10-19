@@ -24,6 +24,7 @@ function Login({ onLogin, status }: { onLogin: () => Promise<void>; status: Setu
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const setup = status.setup_required
+  const recovery = setup && status.password_recovery
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -41,8 +42,9 @@ function Login({ onLogin, status }: { onLogin: () => Promise<void>; status: Setu
 
   return <div className="auth-page"><div className="auth-nook w-full max-w-sm space-y-7">
     <a href="/" className="flex items-center justify-center gap-2"><Logo /><span className="text-2xl font-extrabold tracking-tight">Localert<span className="text-primary">.</span></span></a>
-    <Card><CardHeader className="text-center"><LittleBell className="mx-auto mb-1 size-24" /><CardTitle className="text-xl">{setup ? status.legacy_token_required ? "Finish upgrading Localert" : "Welcome to Localert" : "Welcome back, lovely human."}</CardTitle><CardDescription>{setup ? "Your very own notification nook. Let’s make it yours." : "Your apps, your alerts, your happy little space."}</CardDescription></CardHeader><CardContent><form className="space-y-5" onSubmit={submit}>
-      {setup && !status.local_setup_allowed && <p role="alert" className="text-destructive text-sm">Open http://127.0.0.1:8787 on the computer running Localert to finish first-time setup.</p>}
+    <Card><CardHeader className="text-center"><LittleBell className="mx-auto mb-1 size-24" /><CardTitle className="text-xl">{recovery ? "Choose a new dashboard password" : setup ? status.legacy_token_required ? "Finish upgrading Localert" : "Welcome to Localert" : "Welcome back, lovely human."}</CardTitle><CardDescription>{recovery ? "Your password was reset from this computer. App keys and history are still here—pick a new password to continue." : setup ? "Your very own notification nook. Let’s make it yours." : "Your apps, your alerts, your happy little space."}</CardDescription></CardHeader><CardContent><form className="space-y-5" onSubmit={submit}>
+      {recovery && <p className="rounded-xl bg-mint p-3 text-sm leading-6 text-mint-foreground">Password recovery is active. Finish setup below to sign in again.</p>}
+      {setup && !status.local_setup_allowed && <p role="alert" className="text-destructive text-sm">Open this dashboard on the computer running Localert using <strong>http://127.0.0.1:8787</strong> (or your LAN address from that same machine) to finish setup.</p>}
       {setup && status.legacy_token_required && <div className="space-y-2"><Label htmlFor="legacy-token">Previous admin token</Label><Input id="legacy-token" type="password" value={legacyToken} onChange={event => setLegacyToken(event.target.value)} autoComplete="off" required /><p className="text-muted-foreground text-xs leading-5">Your existing keys and history were imported. Enter the admin_token from your original state.json once to protect this upgrade.</p></div>}
       <div className="space-y-2"><Label htmlFor="dashboard-password">Password</Label><Input id="dashboard-password" type="password" placeholder={setup ? "Choose your dashboard password" : "Your dashboard password"} value={password} onChange={event => setPassword(event.target.value)} autoComplete={setup ? "new-password" : "current-password"} minLength={setup ? 8 : undefined} maxLength={128} required />{setup && <p className="text-muted-foreground text-xs leading-5">Use 8–128 characters. Your password is securely hashed and saved locally in SQLite.</p>}</div>
       {setup && <div className="space-y-2"><Label htmlFor="confirm-password">Confirm password</Label><Input id="confirm-password" type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /><p className="text-muted-foreground text-xs leading-5">With autostart installed, Localert starts quietly at sign-in. Your apps can send notifications without opening the dashboard.</p></div>}
@@ -92,19 +94,22 @@ export default function App() {
 
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
-    if (authenticated !== false || !setupStatus || operation) return
-    const interval = setInterval(() => { if (!document.hidden) void refresh() }, 4000)
-    return () => clearInterval(interval)
-  }, [authenticated, setupStatus, operation, refresh])
-  useEffect(() => { if (!authenticated || operation) return; const interval = setInterval(() => { if (!document.hidden) void refresh() }, 5000); return () => clearInterval(interval) }, [authenticated, refresh, operation])
+    if (operation) return
+    const sync = () => { if (!document.hidden) void refresh() }
+    const interval = setInterval(sync, 2500)
+    window.addEventListener("focus", sync)
+    document.addEventListener("visibilitychange", sync)
+    return () => { clearInterval(interval); window.removeEventListener("focus", sync); document.removeEventListener("visibilitychange", sync) }
+  }, [operation, refresh])
   useEffect(() => { const update = () => { setPage(currentPage()); window.scrollTo(0, 0) }; window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update) }, [])
   useEffect(() => { document.title = `${pages[page]} · Localert` }, [page])
   useEffect(() => { try { const updated = sessionStorage.getItem("localert-updated"); if (updated) { sessionStorage.removeItem("localert-updated"); toast.success(`All fresh! Localert v${updated} is ready.`) } } catch { /* Storage is optional. */ } }, [])
 
   async function logout() {
     ++refreshVersion.current
-    try { await api("/api/admin/logout", { method: "POST" }); setData(null); setAuthenticated(false) }
+    try { await api("/api/admin/logout", { method: "POST" }) }
     catch (error) { toast.error(errorMessage(error)) }
+    finally { await refresh() }
   }
 
   function watchRestart(kind: "restart" | "upgrade", previous: string, expected?: string) {

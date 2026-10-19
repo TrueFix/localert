@@ -298,6 +298,10 @@ func TestPasswordResetSetupAllowsSameMachineLANClient(t *testing.T) {
 	if err := f.store.ResetPassword(); err != nil {
 		t.Fatal(err)
 	}
+	status, err := f.store.SetupStatus()
+	if err != nil || !status.PasswordRecovery {
+		t.Fatalf("reset did not mark password recovery: %+v %v", status, err)
+	}
 	localIP := ""
 	for _, address := range lanAddresses() {
 		localIP = address

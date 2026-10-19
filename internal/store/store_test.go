@@ -167,8 +167,8 @@ func TestPasswordChangeAndRecoveryKeepAppKeys(t *testing.T) {
 		t.Fatal("password recovery discarded app key")
 	}
 	status, err := s.SetupStatus()
-	if err != nil || !status.SetupRequired {
-		t.Fatal("recovery did not re-enable setup")
+	if err != nil || !status.SetupRequired || !status.PasswordRecovery {
+		t.Fatalf("recovery did not re-enable setup: %+v %v", status, err)
 	}
 	if err := s.Setup("recovered password", ""); err != nil {
 		t.Fatal(err)
