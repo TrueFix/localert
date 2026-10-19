@@ -157,6 +157,26 @@ func TestPasswordChangeAndRecoveryKeepAppKeys(t *testing.T) {
 	if _, valid, _ := s.VerifyPassword("replacement password"); !valid {
 		t.Fatal("new password rejected")
 	}
+	generated, err := GenerateDashboardPassword()
+	if err != nil || len(generated) < 8 {
+		t.Fatalf("generate dashboard password: %q %v", generated, err)
+	}
+	rotated, _ := s.CredentialVersion()
+	if err := s.AssignPassword(generated); err != nil {
+		t.Fatal(err)
+	}
+	if assigned, _ := s.CredentialVersion(); assigned == rotated {
+		t.Fatal("assign password did not rotate credential version")
+	}
+	if _, valid, _ := s.VerifyPassword(generated); !valid {
+		t.Fatal("assigned password rejected")
+	}
+	if _, valid, _ := s.VerifyPassword("replacement password"); valid {
+		t.Fatal("previous password still works after assign")
+	}
+	if err := s.AssignPassword("short"); !errors.Is(err, ErrInvalidPassword) {
+		t.Fatal("assign accepted invalid password")
+	}
 	if err := s.ResetPassword(); err != nil {
 		t.Fatal(err)
 	}

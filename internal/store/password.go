@@ -19,6 +19,7 @@ const passwordIterations = 600_000
 
 var (
 	ErrAlreadyConfigured = errors.New("Localert is already configured; sign in with your password")
+	ErrNotConfigured     = errors.New("Localert has no dashboard password yet; finish setup in the dashboard or use --reset-password")
 	ErrInvalidPassword   = errors.New("password must contain 8–128 characters")
 	ErrIncorrectPassword = errors.New("incorrect current password")
 	ErrLegacyToken       = errors.New("enter the previous admin token to finish upgrading this installation")
@@ -142,6 +143,57 @@ func (s *Store) ChangePassword(current, replacement string) error {
 		return ErrIncorrectPassword
 	}
 	return err
+}
+
+// AssignPassword sets a new dashboard password without the current one. It is
+// intended for local CLI recovery on a machine that already has filesystem access.
+func (s *Store) AssignPassword(replacement string) error {
+	if err := validatePassword(replacement); err != nil {
+		return err
+	}
+	status, err := s.SetupStatus()
+	if err != nil {
+		return err
+	}
+	if status.SetupRequired {
+		return ErrNotConfigured
+	}
+	encoded, err := passwordHash(replacement)
+	if err != nil {
+		return err
+	}
+	nextVersion, err := randomToken("", 16)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.Exec("UPDATE admin SET password_hash = ?, credential_version = ?, updated_at = ? WHERE id = 1", encoded, nextVersion, timestamp(time.Now()))
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotConfigured
+	}
+	_, _ = s.db.Exec("DELETE FROM metadata WHERE key = 'password_recovery'")
+	return nil
+}
+
+// GenerateDashboardPassword returns a random password suitable for AssignPassword.
+func GenerateDashboardPassword() (string, error) {
+	const length = 20
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_"
+	buf := make([]byte, length)
+	raw := make([]byte, length)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	for i, value := range raw {
+		buf[i] = alphabet[int(value)%len(alphabet)]
+	}
+	return string(buf), nil
 }
 
 // ResetPassword is a local CLI recovery operation. It retains all app keys and

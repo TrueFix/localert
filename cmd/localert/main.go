@@ -29,7 +29,7 @@ import (
 	"localert/web"
 )
 
-var version = "0.5.5"
+var version = "0.5.6"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
@@ -45,6 +45,7 @@ func run() error {
 	open := flag.Bool("open", false, "open the dashboard in your default browser")
 	noOpen := flag.Bool("no-open", false, "disable automatic browser opening during first-run setup")
 	resetPassword := flag.Bool("reset-password", false, "reset the dashboard password while keeping app keys and history")
+	changePassword := flag.Bool("change-password", false, "generate a new dashboard password, print it once, and sign out other sessions")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
 	logFile := flag.String("log-file", "", "write logs to this file, capped at 1 MiB plus one backup")
@@ -88,6 +89,9 @@ func run() error {
 	if *open && *noOpen {
 		return errors.New("use either --open or --no-open")
 	}
+	if *resetPassword && *changePassword {
+		return errors.New("use either --reset-password or --change-password")
+	}
 	if *dataDir == "" {
 		dir, err := os.UserConfigDir()
 		if err != nil {
@@ -109,6 +113,18 @@ func run() error {
 			return fmt.Errorf("reset dashboard password: %w", err)
 		}
 		fmt.Fprintf(out, "Dashboard password reset for %s.\nApp keys and history were kept.\nOpen the dashboard on this computer to choose a new password (http://127.0.0.1:8787). If Localert is already running, refresh the page or sign in again.\n", absolute)
+		return nil
+	}
+	if *changePassword {
+		generated, err := store.GenerateDashboardPassword()
+		if err != nil {
+			return fmt.Errorf("generate dashboard password: %w", err)
+		}
+		if err := state.AssignPassword(generated); err != nil {
+			return fmt.Errorf("change dashboard password: %w", err)
+		}
+		fmt.Fprintf(out, "New dashboard password for %s.\nCopy it now; it is not shown again. Other dashboard sessions were signed out.\n\n", absolute)
+		fmt.Fprintln(os.Stdout, generated)
 		return nil
 	}
 	if err := updater.ValidateURL(defaultUpdateFeed); err != nil {

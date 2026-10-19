@@ -104,6 +104,17 @@ class StartupTests(unittest.TestCase):
         self.request("POST", "/api/admin/setup", {"password": "recovered user password"})
         self.assertEqual(self.request("GET", "/api/admin/keys")["keys"][0]["id"], created["key"]["id"])
 
+    def test_change_password_prints_a_new_secret(self):
+        self.start("--no-open")
+        self.request("POST", "/api/admin/setup", {"password": "cli change password test"})
+        changed = subprocess.run([str(BINARY), "--data-dir", str(self.data), "--change-password"], env=self.env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        lines = changed.stdout.strip().splitlines()
+        self.assertGreaterEqual(len(lines), 1)
+        new_password = lines[-1].strip()
+        self.assertGreaterEqual(len(new_password), 8)
+        self.request("POST", "/api/admin/login", {"password": new_password})
+
     def test_no_open_suppresses_first_run_browser(self):
         self.start("--no-open")
         self.assertTrue(self.request("GET", "/api/admin/setup")["setup_required"])

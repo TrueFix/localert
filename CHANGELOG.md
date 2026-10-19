@@ -2,6 +2,11 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.6] - 2026-10-20
+
+### Added
+- **`localert --change-password`** — generate a new dashboard password, print it once to the terminal, and sign out other dashboard sessions (same `--data-dir` as the running instance).
+
 ## [0.5.5] - 2026-10-20
 
 ### Fixed
@@ -113,6 +118,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.6]: https://github.com/TrueFix/localert/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/TrueFix/localert/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/TrueFix/localert/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/TrueFix/localert/compare/v0.5.2...v0.5.3
