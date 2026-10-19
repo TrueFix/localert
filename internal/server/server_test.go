@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -288,6 +289,38 @@ func TestFirstRunSetupIsLocalAndOneTime(t *testing.T) {
 	}
 	if _, valid, err := f.store.VerifyPassword(testPassword); err != nil || !valid {
 		t.Fatal("setup password changed unexpectedly")
+	}
+}
+
+func TestPasswordResetSetupAllowsSameMachineLANClient(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	if err := f.store.ResetPassword(); err != nil {
+		t.Fatal(err)
+	}
+	localIP := ""
+	for _, address := range lanAddresses() {
+		localIP = address
+		break
+	}
+	if localIP == "" {
+		t.Skip("no private IPv4 address on this machine")
+	}
+	body, _ := json.Marshal(map[string]string{"password": testPassword})
+	req := httptest.NewRequest("POST", f.server.URL+"/api/admin/setup", strings.NewReader(string(body)))
+	req.RemoteAddr = net.JoinHostPort(localIP, "4242")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	f.server.Config.Handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("local LAN client setup after reset: %d %s", w.Code, w.Body.Bytes())
+	}
+	req = httptest.NewRequest("GET", f.server.URL+"/api/admin/setup", nil)
+	req.RemoteAddr = net.JoinHostPort("203.0.113.7", "4242")
+	w = httptest.NewRecorder()
+	f.server.Config.Handler.ServeHTTP(w, req)
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"local_setup_allowed":false`)) {
+		t.Fatalf("remote client should not be treated as local: %s", w.Body.Bytes())
 	}
 }
 

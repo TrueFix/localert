@@ -29,7 +29,7 @@ import (
 	"localert/web"
 )
 
-var version = "0.5.3"
+var version = "0.5.4"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
@@ -104,18 +104,18 @@ func run() error {
 		return fmt.Errorf("open local state: %w", err)
 	}
 	defer state.Close()
+	if *resetPassword {
+		if err := state.ResetPassword(); err != nil {
+			return fmt.Errorf("reset dashboard password: %w", err)
+		}
+		fmt.Fprintf(out, "Dashboard password reset for %s.\nApp keys and history were kept.\nOpen the dashboard on this computer to choose a new password (http://127.0.0.1:8787). If Localert is already running, refresh the page or sign in again.\n", absolute)
+		return nil
+	}
 	if err := updater.ValidateURL(defaultUpdateFeed); err != nil {
 		return fmt.Errorf("invalid publisher update feed: %w", err)
 	}
 	if err := state.InitializeUpdateFeed(defaultUpdateFeed); err != nil {
 		return err
-	}
-	if *resetPassword {
-		if err := state.ResetPassword(); err != nil {
-			return err
-		}
-		fmt.Println("Dashboard password reset. App keys and history were kept.\nOpen the dashboard on this computer to create a new password; start Localert if it is not running.")
-		return nil
 	}
 	status, err := state.SetupStatus()
 	if err != nil {

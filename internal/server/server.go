@@ -204,6 +204,46 @@ func loopbackRequest(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// localRequest is true when the TCP client is this computer (loopback or a local interface IP).
+// Needed after --reset-password when the dashboard is opened via a LAN URL on the same machine.
+func localRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	ip = ip.To4()
+	if ip == nil {
+		return false
+	}
+	for _, address := range lanAddresses() {
+		if ip.String() == address {
+			return true
+		}
+	}
+	interfaces, err := net.InterfaceAddrs()
+	if err != nil {
+		return false
+	}
+	for _, address := range interfaces {
+		network, ok := address.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		local := network.IP.To4()
+		if local != nil && local.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := s.opts.Store.SetupStatus()
 	if err != nil {
@@ -213,12 +253,12 @@ func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, struct {
 		store.SetupStatus
 		LocalSetupAllowed bool `json:"local_setup_allowed"`
-	}{status, loopbackRequest(r)})
+	}{status, localRequest(r)})
 }
 
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
-	if !loopbackRequest(r) {
-		apiError(w, 403, "local_setup_only", "open Localert on this computer using http://127.0.0.1 to finish setup")
+	if !localRequest(r) {
+		apiError(w, 403, "local_setup_only", "open Localert on this computer (http://127.0.0.1) to finish setup after a password reset")
 		return
 	}
 	if !s.allow("setup", 10) {

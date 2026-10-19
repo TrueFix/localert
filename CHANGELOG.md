@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] - 2026-10-20
+
+### Fixed
+- **`localert --reset-password`** runs immediately (no longer blocked by update-feed initialization) and prints the data directory path.
+- After a CLI password reset, **setup works** when you open the dashboard via this computer’s LAN address (not only `127.0.0.1`), and the sign-in page **detects recovery** without a full reload.
+
 ## [0.5.3] - 2026-10-20
 
 ### Fixed
@@ -101,6 +107,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.4]: https://github.com/TrueFix/localert/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/TrueFix/localert/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/TrueFix/localert/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/TrueFix/localert/compare/v0.5.0...v0.5.1

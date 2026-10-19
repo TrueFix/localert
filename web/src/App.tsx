@@ -35,7 +35,7 @@ function Login({ onLogin, status }: { onLogin: () => Promise<void>; status: Setu
       await onLogin()
     } catch (error) {
       setError(errorMessage(error))
-      if (error instanceof ApiError && error.status === 409) await onLogin()
+      if (error instanceof ApiError && (error.status === 409 || error.status === 401)) await onLogin()
     } finally { setBusy(false) }
   }
 
@@ -47,6 +47,7 @@ function Login({ onLogin, status }: { onLogin: () => Promise<void>; status: Setu
       <div className="space-y-2"><Label htmlFor="dashboard-password">Password</Label><Input id="dashboard-password" type="password" placeholder={setup ? "Choose your dashboard password" : "Your dashboard password"} value={password} onChange={event => setPassword(event.target.value)} autoComplete={setup ? "new-password" : "current-password"} minLength={setup ? 8 : undefined} maxLength={128} required />{setup && <p className="text-muted-foreground text-xs leading-5">Use 8–128 characters. Your password is securely hashed and saved locally in SQLite.</p>}</div>
       {setup && <div className="space-y-2"><Label htmlFor="confirm-password">Confirm password</Label><Input id="confirm-password" type="password" value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /><p className="text-muted-foreground text-xs leading-5">With autostart installed, Localert starts quietly at sign-in. Your apps can send notifications without opening the dashboard.</p></div>}
       {error && <p className="text-destructive text-sm" role="alert">{error}</p>}
+      {!setup && <p className="text-muted-foreground text-xs leading-5">Forgot your password? On this computer, run <code className="text-foreground">localert --reset-password</code>, then refresh this page to choose a new one. App keys and history stay put.</p>}
       <Button className="w-full" type="submit" disabled={busy || !password || (setup && !status.local_setup_allowed)}>{busy ? <LoaderCircleIcon className="animate-spin" /> : null}{busy ? "Connecting…" : setup ? "Finish setup" : "Open my workspace"}{!busy && <ArrowRightIcon />}</Button>
     </form></CardContent></Card>
     <p className="text-muted-foreground flex items-center justify-center gap-2 text-xs"><BellIcon className="size-3.5" />One binary. Your machine. Instant notifications.</p>
@@ -78,11 +79,23 @@ export default function App() {
       setData(value); setAuthenticated(true); setConnected(true)
     } catch (error) {
       if (attempt !== refreshVersion.current) return
-      if (error instanceof ApiError && error.status === 401) { setAuthenticated(false); setData(null); setConnected(true) } else { setConnected(false) }
+      if (error instanceof ApiError && error.status === 401) {
+        try {
+          const status = await api<SetupStatus>("/api/admin/setup")
+          if (attempt !== refreshVersion.current) return
+          setSetupStatus(status)
+        } catch { /* Setup status is best-effort when the session ended. */ }
+        setAuthenticated(false); setData(null); setConnected(true)
+      } else { setConnected(false) }
     }
   }, [])
 
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    if (authenticated !== false || !setupStatus || operation) return
+    const interval = setInterval(() => { if (!document.hidden) void refresh() }, 4000)
+    return () => clearInterval(interval)
+  }, [authenticated, setupStatus, operation, refresh])
   useEffect(() => { if (!authenticated || operation) return; const interval = setInterval(() => { if (!document.hidden) void refresh() }, 5000); return () => clearInterval(interval) }, [authenticated, refresh, operation])
   useEffect(() => { const update = () => { setPage(currentPage()); window.scrollTo(0, 0) }; window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update) }, [])
   useEffect(() => { document.title = `${pages[page]} · Localert` }, [page])
