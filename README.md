@@ -77,7 +77,7 @@ Try the **Playground** for a test notification. The dashboard's **Guide** has Py
 
 ## 🌷 A few things worth knowing
 
-- **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you. Localert never updates itself in the background.
+- **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you. Localert never updates itself in the background. If the dashboard restart does not pick up a new binary (for example after reinstalling), run **`localert --reload`** on this computer with the same `--data-dir` as your installation.
 - **Your network:** open **Settings → Network** and choose **My whole network** so phones, servers, and other PCs can send notifications with their app key. Use trusted networks; traffic is plain HTTP and first-time setup stays local-only. If a saved address can't be used, Localert falls back to `127.0.0.1:8787`. Starting with `--addr` overrides this setting.
 - **Cloud Connect:** open **Settings → Cloud Connect** to preview what’s coming—a TrueFix-managed public URL for your `/api/notify` endpoint. Registration and tunnel setup are not available yet; your data still stays local until you opt in.
 - **Password recovery:** run the executable with `--reset-password`, then open the dashboard locally to choose a new one. App keys and history are kept.

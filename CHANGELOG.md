@@ -2,6 +2,14 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.7] - 2026-10-20
+
+### Added
+- **`localert --reload`** — gracefully restart the running instance (SIGUSR1 on Linux/macOS, local HTTP fallback on Windows). Uses the installer PID file unless you pass `--pid-file`.
+
+### Fixed
+- Brief pause before spawning a restarted process so upgrades and dashboard restarts bind the listen port reliably after shutdown.
+
 ## [0.5.6] - 2026-10-20
 
 ### Added
@@ -118,6 +126,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.7]: https://github.com/TrueFix/localert/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/TrueFix/localert/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/TrueFix/localert/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/TrueFix/localert/compare/v0.5.3...v0.5.4

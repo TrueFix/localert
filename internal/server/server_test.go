@@ -19,6 +19,7 @@ import (
 
 	"localert/internal/notify"
 	"localert/internal/store"
+	"localert/internal/updater"
 )
 
 type fakeSender struct {
@@ -289,6 +290,46 @@ func TestFirstRunSetupIsLocalAndOneTime(t *testing.T) {
 	}
 	if _, valid, err := f.store.VerifyPassword(testPassword); err != nil || !valid {
 		t.Fatal("setup password changed unexpectedly")
+	}
+}
+
+func TestLocalReloadRequiresLocalClient(t *testing.T) {
+	dir := t.TempDir()
+	state, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { state.Close() })
+	icons, err := notify.NewIcons(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := make(chan struct{}, 1)
+	manager := updater.New(updater.Options{Version: "test", Executable: "localert", Restart: func() error {
+		restarted <- struct{}{}
+		return nil
+	}})
+	ts := httptest.NewServer(New(Options{Store: state, Sender: &fakeSender{}, Icons: icons, Address: "127.0.0.1:8787", Version: "test", Assets: fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}}, Updater: manager, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	t.Cleanup(ts.Close)
+	req := httptest.NewRequest("POST", ts.URL+"/api/local/reload", nil)
+	req.RemoteAddr = "203.0.113.9:4242"
+	w := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(w, req)
+	if w.Code != 403 {
+		t.Fatalf("remote reload: %d", w.Code)
+	}
+	local := httptest.NewRequest("POST", "/api/local/reload", nil)
+	local.Host = "127.0.0.1:8787"
+	local.RemoteAddr = "127.0.0.1:4242"
+	localResponse := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(localResponse, local)
+	if localResponse.Code != http.StatusAccepted {
+		t.Fatalf("local reload: %d %s", localResponse.Code, localResponse.Body.Bytes())
+	}
+	select {
+	case <-restarted:
+	case <-time.After(time.Second):
+		t.Fatal("local reload did not request restart")
 	}
 }
 

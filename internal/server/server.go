@@ -91,6 +91,7 @@ func New(opts Options) *Server {
 	mux.Handle("POST /api/admin/updates/check", s.admin(http.HandlerFunc(s.checkUpdates)))
 	mux.Handle("POST /api/admin/updates/install", s.admin(http.HandlerFunc(s.installUpdate)))
 	mux.Handle("POST /api/admin/restart", s.admin(http.HandlerFunc(s.restart)))
+	mux.HandleFunc("POST /api/local/reload", s.localReload)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { apiError(w, 404, "not_found", "API endpoint not found") })
 	mux.HandleFunc("/", s.assets)
 	s.handler = s.headers(mux)
@@ -657,6 +658,22 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, s.opts.Updater.Status())
 }
 func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
+	if !s.hasUpdater(w) {
+		return
+	}
+	if err := s.opts.Updater.RequestRestart(); err != nil {
+		apiError(w, 409, "restart_busy", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "restarting"})
+}
+
+// localReload restarts Localert from this computer without a dashboard session (CLI --reload).
+func (s *Server) localReload(w http.ResponseWriter, r *http.Request) {
+	if !localRequest(r) {
+		apiError(w, 403, "local_only", "run localert --reload on the computer running Localert")
+		return
+	}
 	if !s.hasUpdater(w) {
 		return
 	}

@@ -23,13 +23,14 @@ import (
 
 	"localert/internal/logfile"
 	"localert/internal/notify"
+	"localert/internal/reload"
 	"localert/internal/server"
 	"localert/internal/store"
 	"localert/internal/updater"
 	"localert/web"
 )
 
-var version = "0.5.6"
+var version = "0.5.7"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
@@ -46,6 +47,7 @@ func run() error {
 	noOpen := flag.Bool("no-open", false, "disable automatic browser opening during first-run setup")
 	resetPassword := flag.Bool("reset-password", false, "reset the dashboard password while keeping app keys and history")
 	changePassword := flag.Bool("change-password", false, "generate a new dashboard password, print it once, and sign out other sessions")
+	reloadRunning := flag.Bool("reload", false, "restart the running Localert (uses the installer PID file unless --pid-file is set)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
 	logFile := flag.String("log-file", "", "write logs to this file, capped at 1 MiB plus one backup")
@@ -89,8 +91,18 @@ func run() error {
 	if *open && *noOpen {
 		return errors.New("use either --open or --no-open")
 	}
-	if *resetPassword && *changePassword {
-		return errors.New("use either --reset-password or --change-password")
+	cliModes := 0
+	if *resetPassword {
+		cliModes++
+	}
+	if *changePassword {
+		cliModes++
+	}
+	if *reloadRunning {
+		cliModes++
+	}
+	if cliModes > 1 {
+		return errors.New("use only one of --reset-password, --change-password, or --reload")
 	}
 	if *dataDir == "" {
 		dir, err := os.UserConfigDir()
@@ -102,6 +114,15 @@ func run() error {
 	absolute, err := filepath.Abs(*dataDir)
 	if err != nil {
 		return err
+	}
+	if *reloadRunning {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := reload.Request(ctx, absolute, *pidFile); err != nil {
+			return fmt.Errorf("reload Localert: %w", err)
+		}
+		fmt.Fprintf(out, "Localert restarted for %s.\n", absolute)
+		return nil
 	}
 	state, err := store.Open(absolute)
 	if err != nil {
@@ -183,6 +204,9 @@ func run() error {
 		_, port, _ := net.SplitHostPort(actualAddr)
 		actualAddr = net.JoinHostPort("0.0.0.0", port)
 	}
+	if err := state.SetListenAddress(actualAddr); err != nil {
+		slog.Warn("could not save listen address for reload and settings", "error", err)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -227,6 +251,23 @@ func run() error {
 	fmt.Fprintln(out, "  Press Ctrl+C to stop.")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if runtime.GOOS != "windows" {
+		reloadSignals := make(chan os.Signal, 2)
+		signal.Notify(reloadSignals, syscall.SIGUSR1)
+		go func() {
+			for {
+				select {
+				case <-reloadSignals:
+					select {
+					case restartRequests <- struct{}{}:
+					default:
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
 	go maintain(ctx, state, icons, func() {
 		select {
 		case restartRequests <- struct{}{}:
@@ -260,6 +301,7 @@ func run() error {
 		if err := state.Close(); err != nil {
 			return err
 		}
+		time.Sleep(150 * time.Millisecond)
 		// Without an explicit --addr, the restarted process reads the saved Network setting.
 		args := []string{"--data-dir", absolute, "--no-open"}
 		if explicitAddr {

@@ -104,6 +104,16 @@ class StartupTests(unittest.TestCase):
         self.request("POST", "/api/admin/setup", {"password": "recovered user password"})
         self.assertEqual(self.request("GET", "/api/admin/keys")["keys"][0]["id"], created["key"]["id"])
 
+    def test_cli_reload_restarts_running_instance(self):
+        pid_file = self.root / "localert.pid"
+        self.start("--no-open", "--pid-file", str(pid_file))
+        self.request("POST", "/api/admin/setup", {"password": "reload user password"})
+        previous = self.request("GET", "/api/health")["instance_id"]
+        reloaded = subprocess.run([str(BINARY), "--data-dir", str(self.data), "--reload", "--pid-file", str(pid_file)], env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(reloaded.returncode, 0, reloaded.stderr + reloaded.stdout)
+        self.wait_for_restart(previous)
+        self.request("POST", "/api/admin/login", {"password": "reload user password"})
+
     def test_change_password_prints_a_new_secret(self):
         self.start("--no-open")
         self.request("POST", "/api/admin/setup", {"password": "cli change password test"})
