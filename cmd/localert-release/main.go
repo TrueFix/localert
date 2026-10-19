@@ -23,7 +23,16 @@ func main() {
 	dir := flag.String("dir", "bin", "directory containing release binaries")
 	base := flag.String("base-url", "", "public directory URL (optional for a static feed; required for GitHub release assets)")
 	notes := flag.String("notes", "A fresh little Localert release.", "release notes")
+	notesFile := flag.String("notes-file", "", "Markdown file containing release notes")
 	flag.Parse()
+	if *notesFile != "" {
+		content, err := os.ReadFile(*notesFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		*notes = string(content)
+	}
 	if err := generate(*version, *dir, *base, *notes); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

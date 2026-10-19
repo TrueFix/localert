@@ -123,3 +123,14 @@ func TestFeedURLValidationAndExplicitReleaseCheck(t *testing.T) {
 		t.Fatal("unconfigured source claimed to be up to date")
 	}
 }
+
+func TestContainerUpdatesAreManagedByDocker(t *testing.T) {
+	m := New(Options{Version: "0.4.0", Container: true})
+	defer m.Close()
+	if !m.Status().Container {
+		t.Fatal("container mode missing from status")
+	}
+	if err := m.Install(); err == nil || !strings.Contains(err.Error(), "docker compose") {
+		t.Fatalf("container attempted binary replacement: %v", err)
+	}
+}

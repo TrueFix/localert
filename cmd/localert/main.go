@@ -24,8 +24,8 @@ import (
 	"localert/web"
 )
 
-var version = "0.3.1"
-var defaultUpdateFeed = ""
+var version = "0.4.0"
+var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
 	if err := run(); err != nil {
@@ -42,10 +42,14 @@ func run() error {
 	resetPassword := flag.Bool("reset-password", false, "reset the dashboard password while keeping app keys and history")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
+	containerMode := flag.Bool("container", false, "use container-managed upgrades and JSON diagnostic logs")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("Localert", version)
 		return nil
+	}
+	if *containerMode {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	}
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments; run localert --help for usage")
@@ -124,7 +128,7 @@ func run() error {
 		return err
 	}
 	restartRequests := make(chan struct{}, 1)
-	updates := updater.New(updater.Options{Version: version, Executable: executable,
+	updates := updater.New(updater.Options{Version: version, Executable: executable, Container: *containerMode,
 		Feed: func() (string, error) { settings, err := state.Settings(); return settings.UpdateFeed, err },
 		Restart: func() error {
 			select {
@@ -200,6 +204,9 @@ func run() error {
 			return err
 		}
 		args := []string{"--addr", actualAddr, "--data-dir", absolute, "--no-open"}
+		if *containerMode {
+			args = append(args, "--container")
+		}
 		if *pidFile != "" {
 			args = append(args, "--pid-file", *pidFile)
 		}

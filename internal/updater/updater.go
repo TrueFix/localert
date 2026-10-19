@@ -52,6 +52,7 @@ type Status struct {
 	Downloaded     int64      `json:"downloaded"`
 	Total          int64      `json:"total"`
 	Platform       string     `json:"platform"`
+	Container      bool       `json:"container"`
 }
 
 type Options struct {
@@ -60,6 +61,7 @@ type Options struct {
 	Feed       func() (string, error)
 	Restart    func() error
 	Client     *http.Client
+	Container  bool
 	// Probe is replaceable in unit tests; production executes the verified binary's --version.
 	Probe func(context.Context, string, string) error
 }
@@ -88,7 +90,7 @@ func New(opts Options) *Manager {
 		opts.Probe = probe
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{opts: opts, status: Status{CurrentVersion: opts.Version, Phase: "idle", Platform: runtime.GOOS + "-" + runtime.GOARCH}, ctx: ctx, cancel: cancel}
+	return &Manager{opts: opts, status: Status{CurrentVersion: opts.Version, Phase: "idle", Platform: runtime.GOOS + "-" + runtime.GOARCH, Container: opts.Container}, ctx: ctx, cancel: cancel}
 }
 
 func ValidateURL(value string) error {
@@ -122,7 +124,7 @@ func (m *Manager) Invalidate() {
 	if m.busy() {
 		return
 	}
-	m.status = Status{CurrentVersion: m.opts.Version, Phase: "idle", Platform: m.status.Platform}
+	m.status = Status{CurrentVersion: m.opts.Version, Phase: "idle", Platform: m.status.Platform, Container: m.opts.Container}
 	m.asset = Asset{}
 	m.checkedSource = ""
 }
@@ -205,11 +207,14 @@ func (m *Manager) check(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.asset, m.checkedSource = asset, feed
-	m.status = Status{CurrentVersion: m.opts.Version, LatestVersion: strings.TrimPrefix(version, "v"), Phase: phase, Notes: manifest.Notes, CheckedAt: &now, Platform: m.status.Platform}
+	m.status = Status{CurrentVersion: m.opts.Version, LatestVersion: strings.TrimPrefix(version, "v"), Phase: phase, Notes: manifest.Notes, CheckedAt: &now, Platform: m.status.Platform, Container: m.opts.Container}
 	return nil
 }
 
 func (m *Manager) Install() error {
+	if m.opts.Container {
+		return errors.New("update the container with docker compose pull && docker compose up -d")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.busy() {

@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+import sys
 
 
 INSTALLER = Path(__file__).with_name("install.sh").resolve()
@@ -110,6 +111,35 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("bootstrap", calls)
         self.assertIn("gui/1000", calls)
         self.assertIn(str(self.home / "Library/LaunchAgents/dev.localert.agent.plist"), calls)
+
+    def test_piped_install_downloads_and_verifies_release(self):
+        curl = self.tools / "curl"
+        curl.write_text(f'#!{sys.executable}\n' + '''import hashlib, os, pathlib, sys
+args = sys.argv[1:]
+url = next(a for a in args if a.startswith("https://"))
+binary = pathlib.Path(os.environ["MOCK_BINARY"]).read_bytes()
+if "api.github.com" in url:
+    print('  "tag_name": "v0.4.0",')
+else:
+    output = pathlib.Path(args[args.index("-o") + 1])
+    if url.endswith("SHA256SUMS"):
+        digest = "0" * 64 if os.environ.get("BAD_CHECKSUM") else hashlib.sha256(binary).hexdigest()
+        output.write_text(digest + "  localert-linux-amd64\\n")
+    else:
+        assert "/download/v0.4.0/localert-linux-amd64" in url
+        output.write_bytes(binary)
+''')
+        curl.chmod(0o755)
+        self.env["MOCK_BINARY"] = str(self.binary)
+        result = subprocess.run(["bash", "-s", "--", "--no-start"], input=INSTALLER.read_text(), cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        target = Path(self.env["LOCALERT_INSTALL_DIR"]) / "localert"
+        self.assertEqual(target.read_bytes(), self.binary.read_bytes())
+        self.env["BAD_CHECKSUM"] = "1"
+        result = subprocess.run(["bash", "-s", "--", "--version", "v0.4.0", "--no-start"], input=INSTALLER.read_text(), cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Checksum mismatch", result.stderr)
+        self.assertEqual(target.read_bytes(), self.binary.read_bytes())
 
 
 if __name__ == "__main__":

@@ -29,7 +29,21 @@ The website, font, icons, and SQLite engine are all inside the executable. Your 
 
 ## 🏡 Make yourself at home
 
-Grab your binary and installer from the [latest release](https://github.com/TrueFix/localert/releases/latest), and keep them in the same folder:
+Install straight from GitHub — the script detects your system, downloads the latest release, and verifies its checksum before installing.
+
+**Linux & macOS**
+
+```sh
+curl -fsSL https://github.com/TrueFix/localert/releases/latest/download/install.sh | bash
+```
+
+**Windows · PowerShell**
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod https://github.com/TrueFix/localert/releases/latest/download/install.ps1)))
+```
+
+Or download the binary and installer manually from the [latest release](https://github.com/TrueFix/localert/releases/latest):
 
 | Your computer | Binary | Installer |
 | --- | --- | --- |
@@ -100,14 +114,43 @@ npm --prefix web test
 
 ### 📦 Ship a fresh little release
 
-Push a version tag from the current `main`:
+Update `VERSION`, the version in `web/package.json`/lockfile, and the fallback in `cmd/localert/main.go`. Add the matching entry to [CHANGELOG.md](CHANGELOG.md), then push a version tag from the current `main`:
 
 ```sh
-git tag v0.3.2
-git push origin v0.3.2
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
-[GitHub Actions](https://github.com/TrueFix/localert/actions/workflows/release.yml) builds all five binaries, runs the checks, and publishes a release with the installers, `SHA256SUMS`, and `update-manifest.json`. The tag sets the binary version, and the dashboard update feed is configured automatically. Tags such as `v0.4.0-rc.1` become prereleases.
+[GitHub Actions](https://github.com/TrueFix/localert/actions/workflows/release.yml) validates the version, builds all five binaries, runs the checks, publishes multi-architecture images to GHCR, and creates a GitHub release with installers, Compose, checksums, and the update manifest. Release notes come from the checked-in changelog. Tags such as `v0.5.0-rc.1` become prereleases and do not update the `latest` image tag.
+
+The official update manifest is **https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json**. It is built into Localert by default. Older installs with a blank/custom source can choose **Use official GitHub feed** in Settings and save it.
+
+## 🐳 A container for your Linux desktop
+
+Images are published as `ghcr.io/truefix/localert:latest` and version tags such as `:v0.4.0` for amd64 and arm64.
+
+Desktop notifications need the **Linux desktop session bus**, not a headless server or Docker Desktop's VM. The included Compose file uses your user ID, shares only the session-bus socket, and binds the HTTP server to host loopback so first-run setup remains local.
+
+Download [compose.yml](compose.yml) into a folder, then run from your signed-in Linux desktop:
+
+```sh
+export LOCALERT_UID="$(id -u)" LOCALERT_GID="$(id -g)"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p localert-data
+docker compose up -d
+```
+
+Open **http://127.0.0.1:8787** to create your password. Stop any standalone Localert instance first if it uses the same port. Docker Desktop on Windows/macOS does not expose the native desktop bus; use the normal binary there.
+
+```sh
+docker compose logs -f                    # Diagnostics
+docker compose pull && docker compose up -d  # Upgrade; database is kept
+docker compose down                      # Stop; database is kept
+```
+
+Set `LOCALERT_VERSION=v0.4.0` to pin a container version. Containers use image upgrades rather than replacing their own binary. Compose retains up to three 10 MB diagnostic log files. Notification history retention is configured separately in dashboard Settings. Never mount the Docker socket.
+
+For a local image build: `LOCALERT_VERSION=0.4.0 docker compose build`. Container errors use structured JSON on stderr; startup information goes to stdout. Native installations retain their per-user launcher logs.
 
 ---
 

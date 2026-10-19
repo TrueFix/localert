@@ -5,7 +5,7 @@ set -eu
 say() { printf '%s\n' "$*"; }
 die() { say "Error: $*" >&2; exit 1; }
 usage() {
-  say 'Usage: sh install.sh [--binary PATH] [--data-dir PATH] [--no-start] [--uninstall]'
+  say 'Usage: sh install.sh [--binary PATH] [--version vX.Y.Z] [--data-dir PATH] [--no-start] [--uninstall]'
   say 'Installs Localert for the current user and enables desktop-login autostart.'
   say 'Uninstall keeps the database, icons, and logs. LOCALERT_INSTALL_DIR overrides ~/.local/bin.'
 }
@@ -14,9 +14,14 @@ binary=''
 data_dir=''
 start=1
 uninstall=0
+release_version=''
+download_dir=''
+temporary=''
+trap 'if [ -n "$temporary" ]; then rm -f "$temporary"; fi; if [ -n "$download_dir" ]; then rm -rf "$download_dir"; fi' 0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --binary) [ "$#" -ge 2 ] || die '--binary requires a path'; binary=$2; shift 2 ;;
+    --version) [ "$#" -ge 2 ] || die '--version requires a tag'; release_version=$2; shift 2 ;;
     --data-dir) [ "$#" -ge 2 ] || die '--data-dir requires a path'; data_dir=$2; shift 2 ;;
     --no-start) start=0; shift ;;
     --uninstall) uninstall=1; shift ;;
@@ -97,16 +102,37 @@ if [ "$uninstall" -eq 1 ]; then
   exit 0
 fi
 
-if [ -z "$binary" ]; then
+if [ -z "$binary" ] && [ -z "$release_version" ] && [ -f "$0" ]; then
   for candidate in "$script_dir/localert-$os-$arch" "$script_dir/../bin/localert-$os-$arch" "$script_dir/localert" "$script_dir/../bin/localert"; do
     if [ -f "$candidate" ]; then binary=$candidate; break; fi
   done
+fi
+if [ -z "$binary" ]; then
+  command -v curl >/dev/null 2>&1 || die 'curl is required to download Localert.'
+  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || die 'sha256sum or shasum is required.'
+  umask 077
+  download_dir=$(mktemp -d "${TMPDIR:-/tmp}/localert-install.XXXXXXXX")
+  api='https://api.github.com/repos/TrueFix/localert/releases/latest'
+  if [ -z "$release_version" ]; then
+    release_version=$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 60 "$api" | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p')
+  fi
+  case "$release_version" in v[0-9]*) ;; *) die 'Cannot determine a release version; publish a GitHub release first.' ;; esac
+  case "$release_version" in *[!a-zA-Z0-9.+-]*) die 'Invalid version tag.' ;; esac
+  asset="localert-$os-$arch"
+  base="https://github.com/TrueFix/localert/releases/download/$release_version"
+  say "Downloading $release_version for $os/$arch…"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 180 "$base/$asset" -o "$download_dir/$asset"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 60 "$base/SHA256SUMS" -o "$download_dir/SHA256SUMS"
+  expected=$(awk -v name="$asset" '$2 == name {print $1}' "$download_dir/SHA256SUMS")
+  [ "${#expected}" -eq 64 ] || die 'Release checksum is missing or invalid.'
+  if command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$download_dir/$asset" | awk '{print $1}'); else actual=$(shasum -a 256 "$download_dir/$asset" | awk '{print $1}'); fi
+  [ "$actual" = "$expected" ] || die 'Checksum mismatch. The existing installation was not changed.'
+  binary="$download_dir/$asset"
 fi
 [ -n "$binary" ] && [ -f "$binary" ] || die "Binary not found. Supply --binary /path/to/localert-$os-$arch."
 umask 077
 mkdir -p "$install_dir" "$support_dir" "$log_dir" "$data_dir" "$(dirname -- "$autostart")"
 temporary="$install_dir/.localert-install-$$"
-trap 'rm -f "$temporary"' 0
 cp "$binary" "$temporary"
 chmod 755 "$temporary"
 if ! binary_version=$("$temporary" --version); then die 'The binary could not run on this OS/architecture.'; fi

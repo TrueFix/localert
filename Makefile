@@ -1,8 +1,8 @@
 .PHONY: build web test check release installers
 
-VERSION ?= 0.3.1
+VERSION ?= $(shell cat VERSION)
 RELEASE_BASE_URL ?=
-UPDATE_FEED_URL ?=
+UPDATE_FEED_URL ?= https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json
 LDFLAGS = -s -w -X main.version=$(VERSION) -X main.defaultUpdateFeed=$(UPDATE_FEED_URL)
 
 web:
@@ -28,7 +28,9 @@ release: web
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/localert-macos-amd64 ./cmd/localert
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/localert-macos-arm64 ./cmd/localert
 	$(MAKE) installers
-	go run ./cmd/localert-release --version "$(VERSION)" --dir bin --base-url "$(RELEASE_BASE_URL)"
+	python3 scripts/release-notes.py "$(VERSION)" > bin/release-notes.md
+	go run ./cmd/localert-release --version "$(VERSION)" --dir bin --base-url "$(RELEASE_BASE_URL)" --notes-file bin/release-notes.md
+	cp compose.yml CHANGELOG.md bin/
 
 installers:
 	mkdir -p bin

@@ -9,6 +9,7 @@ Installs Localert for the current Windows user and enables desktop-login autosta
 [CmdletBinding()]
 param(
     [string]$BinaryPath,
+    [string]$ReleaseVersion,
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\Localert'),
     [string]$DataDir = (Join-Path $env:APPDATA 'localert'),
     [switch]$NoStart,
@@ -47,13 +48,29 @@ if ($Uninstall) {
 }
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'Localert requires 64-bit Windows.' }
-if (-not $BinaryPath) {
+if (-not $BinaryPath -and $PSScriptRoot -and -not $ReleaseVersion) {
     $Candidates = @(
         (Join-Path $PSScriptRoot 'localert-windows-amd64.exe'),
         (Join-Path $PSScriptRoot '..\bin\localert-windows-amd64.exe'),
         (Join-Path $PSScriptRoot 'localert.exe')
     )
     $BinaryPath = $Candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if (-not $BinaryPath) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    if (-not $ReleaseVersion) { $ReleaseVersion = (Invoke-RestMethod -Uri 'https://api.github.com/repos/TrueFix/localert/releases/latest').tag_name }
+    if ($ReleaseVersion -notmatch '^v[0-9][0-9A-Za-z.+-]*$') { throw 'Invalid release tag, or no GitHub release is available yet.' }
+    $DownloadDir = Join-Path ([IO.Path]::GetTempPath()) ('localert-install-' + [guid]::NewGuid())
+    [IO.Directory]::CreateDirectory($DownloadDir) | Out-Null
+    $Base = "https://github.com/TrueFix/localert/releases/download/$ReleaseVersion"
+    $BinaryPath = Join-Path $DownloadDir 'localert-windows-amd64.exe'
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri "$Base/localert-windows-amd64.exe" -OutFile $BinaryPath
+        $Checksums = (Invoke-WebRequest -UseBasicParsing -Uri "$Base/SHA256SUMS").Content
+        $Match = [regex]::Match($Checksums, '(?m)^([a-fA-F0-9]{64})\s+localert-windows-amd64\.exe\s*$')
+        if (-not $Match.Success -or (Get-FileHash -LiteralPath $BinaryPath -Algorithm SHA256).Hash -ne $Match.Groups[1].Value) { throw 'Checksum mismatch; existing installation left unchanged.' }
+        # Keep the downloaded file until the copy below; never execute an unverified file.
+    } catch { Remove-Item -LiteralPath $DownloadDir -Recurse -Force; throw }
 }
 if (-not $BinaryPath -or -not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
     throw 'Binary not found. Supply -BinaryPath C:\path\to\localert-windows-amd64.exe.'
@@ -67,6 +84,7 @@ foreach ($Directory in @($InstallDir, $DataDir, $LogDir, $Startup, $Programs)) {
 }
 Stop-InstalledLocalert
 if ($BinaryPath -ne $Target) { [IO.File]::Copy($BinaryPath, $Target, $true) }
+if ($DownloadDir) { Remove-Item -LiteralPath $DownloadDir -Recurse -Force }
 
 function ConvertTo-ScriptLiteral([string]$Value) { return "'" + $Value.Replace("'", "''") + "'" }
 
