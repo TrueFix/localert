@@ -1,0 +1,16 @@
+# Linux desktop: run as your user to access the session D-Bus for notifications
+services:
+  localert:
+    build:
+      context: .
+      args:
+        VERSION: ${LOCALERT_VERSION:-dev}
+    user: "${LOCALERT_UID:-1000}:${LOCALERT_GID:-1000}"
+    network_mode: host
+    command: ["--addr", "127.0.0.1:8787", "--data-dir", "/data", "--no-open"]
+    environment:
+      DBUS_SESSION_BUS_ADDRESS: unix:path=/run/localert-bus
+    volumes:
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/bus:/run/localert-bus
+      - ./localert-data:/data
+    restart: unless-stopped
