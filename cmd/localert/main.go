@@ -37,8 +37,8 @@ func main() {
 func run() error {
 	addr := flag.String("addr", "127.0.0.1:8787", "HTTP listen address (use 0.0.0.0:8787 for your network)")
 	dataDir := flag.String("data-dir", "", "state directory (default: user config directory / localert)")
-	open := flag.Bool("open", false, "open the dashboard in your default browser")
-	noOpen := flag.Bool("no-open", false, "disable automatic browser opening during first-run setup")
+	open := flag.Bool("open", true, "open the dashboard in your default browser (default: true)")
+	noOpen := flag.Bool("no-open", false, "disable automatic browser opening")
 	resetPassword := flag.Bool("reset-password", false, "reset the dashboard password while keeping app keys and history")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
