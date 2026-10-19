@@ -5,7 +5,7 @@ set -eu
 say() { printf '%s\n' "$*"; }
 die() { say "Error: $*" >&2; exit 1; }
 usage() {
-  say 'Usage: sh install.sh [--binary PATH] [--version vX.Y.Z] [--data-dir PATH] [--no-start] [--uninstall]'
+  say 'Usage: sh install.sh [--binary PATH] [--version vX.Y.Z] [--data-dir PATH] [--no-start] [--uninstall [--purge]]'
   say 'Installs Localert for the current user and enables desktop-login autostart.'
   say 'Uninstall keeps the database, icons, and logs. LOCALERT_INSTALL_DIR overrides ~/.local/bin.'
 }
@@ -14,6 +14,7 @@ binary=''
 data_dir=''
 start=1
 uninstall=0
+purge=0
 release_version=''
 download_dir=''
 temporary=''
@@ -25,6 +26,7 @@ while [ "$#" -gt 0 ]; do
     --data-dir) [ "$#" -ge 2 ] || die '--data-dir requires a path'; data_dir=$2; shift 2 ;;
     --no-start) start=0; shift ;;
     --uninstall) uninstall=1; shift ;;
+    --purge) purge=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
   esac
@@ -98,7 +100,16 @@ if [ "$uninstall" -eq 1 ]; then
   stop_existing
   rm -f "$autostart" "$launcher" "$target" "$pid_file"
   say 'Localert and its login autostart entry were removed.'
-  say "Database, icons, and logs were kept. Default data location: $data_dir"
+  if [ "$purge" -eq 1 ]; then
+    # Remove only files Localert creates, never a whole user-chosen folder.
+    rm -f "$data_dir/localert.db" "$data_dir/localert.db-wal" "$data_dir/localert.db-shm" "$data_dir/state.json"
+    rm -rf "$data_dir/icons"
+    rm -f "$log_dir/localert.log" "$log_dir/localert.log.1" "$log_dir/crash.log" "$log_dir/crash.log.1"
+    rmdir "$data_dir" "$log_dir" "$support_dir" 2>/dev/null || true
+    say 'Your database, app keys, history, icons, and logs were deleted too.'
+  else
+    say "Your database and logs were kept in $data_dir. Run again with --uninstall --purge to delete them."
+  fi
   exit 0
 fi
 
@@ -144,7 +155,10 @@ cat > "$launcher" <<EOF
 #!/bin/sh
 umask 077
 printf '%s\n' "\$\$" > $(quote_sh "$pid_file")
-exec $(quote_sh "$target") --data-dir $(quote_sh "$data_dir") --pid-file $(quote_sh "$pid_file") >> $(quote_sh "$log_file") 2>&1
+crash=$(quote_sh "$log_dir/crash.log")
+# Only crash traces reach stderr; keep that file small too.
+if [ -f "\$crash" ] && [ "\$(wc -c < "\$crash")" -gt 1048576 ]; then mv -f "\$crash" "\$crash.1"; fi
+exec $(quote_sh "$target") --data-dir $(quote_sh "$data_dir") --pid-file $(quote_sh "$pid_file") --log-file $(quote_sh "$log_file") >/dev/null 2>> "\$crash"
 EOF
 chmod 700 "$launcher"
 
@@ -175,8 +189,8 @@ else
   <key>ThrottleInterval</key><integer>10</integer>
   <key>LimitLoadToSessionType</key><string>Aqua</string>
   <key>ProcessType</key><string>Interactive</string>
-  <key>StandardOutPath</key><string>$(xml_escape "$log_file")</string>
-  <key>StandardErrorPath</key><string>$(xml_escape "$log_file")</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>/dev/null</string>
 </dict></plist>
 EOF
   chmod 600 "$autostart"

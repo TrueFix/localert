@@ -76,11 +76,65 @@ Try the **Playground** for a test notification. The dashboard's **Guide** has Py
 
 ## 🌷 A few things worth knowing
 
-- **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you.
-- **Storage:** `localert.db` lives in `~/.config/localert` on Linux, `%AppData%\localert` on Windows, or `~/Library/Application Support/localert` on macOS.
-- **Your network:** open **Settings → Network** and choose **My whole network** so phones, servers, and other PCs can send notifications with their app key. Use trusted networks; first-time setup stays local-only.
-- **Password recovery:** run the executable with `--reset-password`, then open the dashboard locally to choose a new one.
-- **Uninstall:** run `sh install.sh --uninstall`, or `install.ps1 -Uninstall` on Windows. Your saved data is kept.
+- **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you. Localert never updates itself in the background.
+- **Your network:** open **Settings → Network** and choose **My whole network** so phones, servers, and other PCs can send notifications with their app key. Use trusted networks; traffic is plain HTTP and first-time setup stays local-only. If a saved address can't be used, Localert falls back to `127.0.0.1:8787`. Starting with `--addr` overrides this setting.
+- **Password recovery:** run the executable with `--reset-password`, then open the dashboard locally to choose a new one. App keys and history are kept.
+- **Notifications need your desktop session.** Localert must run as your signed-in user. Do Not Disturb and OS notification settings still apply.
+- **Limits:** each app can send 60 notifications per minute, and all apps together 120 per minute. Extra requests get HTTP `429` with `Retry-After`.
+
+### 🍃 Light enough to run forever
+
+Localert is built to sit quietly in the background for years:
+
+- **Idle cost:** 0% CPU and about **3 MB of private memory**. The rest of what your task manager shows (~14 MB) is shared, read-only program code that the OS can reclaim.
+- **No background polling:** it only wakes up for requests and a few milliseconds of housekeeping every 5 minutes. The dashboard refreshes only while it's open and visible.
+- **Gives memory back:** after a burst of notifications, memory returns to the OS. A built-in watchdog restarts Localert if memory ever grows past 256 MB.
+- **Disk stays tiny:**
+  - Logs rotate at 1 MB, with one backup kept.
+  - History follows your retention setting (latest 100 by default).
+  - The custom-icon cache keeps at most 64 images.
+  - The database journal is capped at about 1 MB.
+- **Hard to overload:** request bodies, icon sizes, concurrent deliveries (4), and open connections (64) are capped, so a misbehaving app can't take your computer down.
+- **Crash-safe:** background tasks recover from unexpected errors, and SQLite keeps your database consistent even after a crash or power cut.
+
+### 📁 Where things live
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| **Program** | `~/.local/bin/localert` | `~/.local/bin/localert` | `%LocalAppData%\Programs\Localert\localert.exe` |
+| **Data** (database, icons) | `~/.config/localert` | `~/Library/Application Support/localert` | `%AppData%\localert` |
+| **Logs** | `~/.local/state/localert` | `~/Library/Logs/Localert` | `%LocalAppData%\Localert\logs` |
+| **Autostart** | `~/.config/autostart/localert.desktop` | `~/Library/LaunchAgents/dev.localert.agent.plist` | `Localert.lnk` in your Startup folder |
+
+## 🧹 Uninstall
+
+The same installer removes Localert. By default, your database and logs are **kept**, so reinstalling picks up where you left off. Add **purge** to delete them too.
+
+**Linux & macOS**
+
+```sh
+# Remove the program and autostart (keeps your data)
+curl -fsSL https://github.com/TrueFix/localert/releases/latest/download/install.sh | bash -s -- --uninstall
+
+# Remove everything, including app keys, history, and logs
+curl -fsSL https://github.com/TrueFix/localert/releases/latest/download/install.sh | bash -s -- --uninstall --purge
+```
+
+**Windows · PowerShell**
+
+```powershell
+# Remove the program and autostart (keeps your data)
+& ([scriptblock]::Create((Invoke-RestMethod https://github.com/TrueFix/localert/releases/latest/download/install.ps1))) -Uninstall
+
+# Remove everything, including app keys, history, and logs
+& ([scriptblock]::Create((Invoke-RestMethod https://github.com/TrueFix/localert/releases/latest/download/install.ps1))) -Uninstall -Purge
+```
+
+Purge only deletes files Localert created, never other files in those folders. If you used a custom `--data-dir`, pass the same path when uninstalling.
+
+**Ran the binary yourself, without the installer?** Stop it (Ctrl+C), delete the executable, and optionally delete the data folder from the table above.
+
+**Docker:** `docker compose down`, then delete the `localert-data` folder if you no longer need it.
 
 ## 🛠️ For the builders
 

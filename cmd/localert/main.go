@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,10 +15,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
+	"localert/internal/logfile"
 	"localert/internal/notify"
 	"localert/internal/server"
 	"localert/internal/store"
@@ -24,7 +29,7 @@ import (
 	"localert/web"
 )
 
-var version = "0.4.2"
+var version = "0.5.0"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
@@ -42,6 +47,7 @@ func run() error {
 	resetPassword := flag.Bool("reset-password", false, "reset the dashboard password while keeping app keys and history")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
+	logFile := flag.String("log-file", "", "write logs to this file, capped at 1 MiB plus one backup")
 	containerMode := flag.Bool("container", false, "use container-managed upgrades and JSON diagnostic logs")
 	flag.Parse()
 	explicitAddr := false
@@ -54,9 +60,28 @@ func run() error {
 		fmt.Println("Localert", version)
 		return nil
 	}
-	if *containerMode {
-		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	tuneRuntime()
+	var out io.Writer = os.Stdout
+	var logOut io.Writer = os.Stderr
+	if *logFile != "" {
+		var err error
+		*logFile, err = filepath.Abs(*logFile)
+		if err != nil {
+			return err
+		}
+		writer, err := logfile.Open(*logFile)
+		if err != nil {
+			return fmt.Errorf("open log file: %w", err)
+		}
+		defer writer.Close()
+		out, logOut = writer, writer
 	}
+	if *containerMode {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(logOut, nil)))
+	} else {
+		slog.SetDefault(slog.New(slog.NewTextHandler(logOut, nil)))
+	}
+	log.SetOutput(logOut)
 	if flag.NArg() != 0 {
 		return errors.New("unexpected arguments; run localert --help for usage")
 	}
@@ -167,40 +192,33 @@ func run() error {
 	httpServer := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
 		WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10,
+		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 	}
 	host, port, _ := net.SplitHostPort(actualAddr)
 	if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
 		host = "127.0.0.1"
 	}
 	dashboardURL := "http://" + net.JoinHostPort(host, port)
-	fmt.Printf("\n  Localert %s · native desktop notifications\n\n  Dashboard    %s\n  Notify API   %s/api/notify\n  Listening    %s\n  Database     %s\n", version, dashboardURL, dashboardURL, actualAddr, state.Path())
+	fmt.Fprintf(out, "\n  Localert %s · native desktop notifications\n\n  Dashboard    %s\n  Notify API   %s/api/notify\n  Listening    %s\n  Database     %s\n", version, dashboardURL, dashboardURL, actualAddr, state.Path())
 	if status.SetupRequired {
-		fmt.Println("\n  First-run setup: open the dashboard on this computer to create your password.")
+		fmt.Fprintln(out, "\n  First-run setup: open the dashboard on this computer to create your password.")
 	} else {
-		fmt.Println("\n  Sign in to the dashboard with your password to manage app keys.")
+		fmt.Fprintln(out, "\n  Sign in to the dashboard with your password to manage app keys.")
 	}
 	if status.LegacyTokenRequired {
-		fmt.Println("  Existing data was imported. Use your previous admin token from state.json to finish upgrading.")
+		fmt.Fprintln(out, "  Existing data was imported. Use your previous admin token from state.json to finish upgrading.")
 	}
-	fmt.Println("  Press Ctrl+C to stop.")
+	fmt.Fprintln(out, "  Press Ctrl+C to stop.")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := state.PruneHistory(); err != nil {
-					slog.Error("prune notification history", "error", err)
-				}
-			case <-ctx.Done():
-				return
-			}
+	go maintain(ctx, state, icons, func() {
+		select {
+		case restartRequests <- struct{}{}:
+		default:
 		}
-	}()
+	})
 	errorsCh := make(chan error, 1)
-	go func() { errorsCh <- httpServer.Serve(listener) }()
+	go func() { errorsCh <- httpServer.Serve(limitListener(listener, maxConnections)) }()
 	if *open || (status.SetupRequired && !*noOpen) {
 		if err := openBrowser(dashboardURL); err != nil {
 			slog.Warn("open the dashboard URL manually", "error", err)
@@ -237,6 +255,9 @@ func run() error {
 		if *pidFile != "" {
 			args = append(args, "--pid-file", *pidFile)
 		}
+		if *logFile != "" {
+			args = append(args, "--log-file", *logFile)
+		}
 		if err := updater.Restart(executable, args); err != nil {
 			return fmt.Errorf("restart Localert: %w", err)
 		}
@@ -260,4 +281,95 @@ func openBrowser(url string) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+const (
+	maxConnections    = 64               // open HTTP connections; extra clients wait
+	memoryLimit       = 96 << 20         // soft Go heap limit; normal use stays far below
+	memoryEmergency   = 256 << 20        // a leak this large restarts the process
+	maintenancePeriod = 5 * time.Minute  // a few milliseconds of work, then sleep
+	restartGrace      = 10 * time.Minute // never restart-loop a freshly started process
+)
+
+// tuneRuntime keeps an always-on background service small. Environment
+// variables (GOMAXPROCS, GOMEMLIMIT) still take precedence.
+func tuneRuntime() {
+	if os.Getenv("GOMAXPROCS") == "" {
+		runtime.GOMAXPROCS(min(2, runtime.NumCPU()))
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(memoryLimit)
+	}
+}
+
+// maintain runs rare housekeeping. A panic here is logged, never fatal.
+func maintain(ctx context.Context, state *store.Store, icons *notify.Icons, restart func()) {
+	started := time.Now()
+	period := maintenancePeriod
+	if value, err := time.ParseDuration(os.Getenv("LOCALERT_MAINTENANCE_INTERVAL")); err == nil && value >= time.Second {
+		period = value // test hook for soak tests
+	}
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					slog.Error("maintenance recovered from a panic", "panic", recovered, "stack", string(debug.Stack()))
+				}
+			}()
+			if err := state.PruneHistory(); err != nil {
+				slog.Error("prune notification history", "error", err)
+			}
+			if err := icons.Prune(); err != nil {
+				slog.Warn("prune icon cache", "error", err)
+			}
+			// Give memory used by bursts of notifications back to the OS.
+			debug.FreeOSMemory()
+			var memory runtime.MemStats
+			runtime.ReadMemStats(&memory)
+			if memory.HeapAlloc > memoryEmergency && time.Since(started) > restartGrace {
+				slog.Error("memory use is unexpectedly high; restarting Localert", "heap_mb", memory.HeapAlloc>>20)
+				restart()
+			}
+		}()
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// limitListener caps concurrent connections so a misbehaving client on the
+// network cannot exhaust file descriptors or memory.
+func limitListener(listener net.Listener, limit int) net.Listener {
+	return &limitedListener{Listener: listener, slots: make(chan struct{}, limit)}
+}
+
+type limitedListener struct {
+	net.Listener
+	slots chan struct{}
+}
+
+func (l *limitedListener) Accept() (net.Conn, error) {
+	l.slots <- struct{}{}
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		<-l.slots
+		return nil, err
+	}
+	return &limitedConn{Conn: conn, release: func() { <-l.slots }}, nil
+}
+
+type limitedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
 }

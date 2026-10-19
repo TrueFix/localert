@@ -2,6 +2,29 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-19
+
+Built to run quietly for years. Measured with 1,200 notifications plus repeated dashboard and asset requests:
+private memory goes from 9.5 MB stuck after a burst to 5.6 MB and released, threads from 20 to 9, and data on disk from 4.2 MB to 1.2 MB.
+Idle remains at 0% CPU and about 3 MB of private memory.
+
+### Changed
+- Memory from bursts is returned to the OS. A small Go memory limit and two scheduler threads keep the idle footprint low.
+- Logs rotate at 1 MB with one backup. Installed launchers no longer append to a log forever, and crash output is capped.
+- The custom-icon cache keeps at most 64 images (least recently used are removed). Built-in icons are drawn once and remote icons cached for an hour.
+- The SQLite journal is capped at about 1 MB and checkpointed more often, with a smaller page cache.
+- Dashboard files stream from the executable instead of being copied for every request.
+- Housekeeping runs every 5 minutes instead of every minute.
+
+### Added
+- A shared limit of 120 notifications per minute across all apps, so many apps together can't flood the desktop or CPU.
+- At most 64 open connections; extra clients wait instead of exhausting resources.
+- A memory watchdog that restarts Localert if memory grows past 256 MB.
+- Background tasks recover from unexpected errors instead of crashing.
+- `--log-file` flag, plus `--purge` / `-Purge` for a complete uninstall.
+- README sections on resource use, file locations, and uninstalling.
+- GitHub releases list every commit since the previous tag, with the full CHANGELOG section as the release body.
+
 ## [0.4.2] - 2026-10-19
 
 ### Added
@@ -60,6 +83,9 @@ All notable changes are recorded here. Versions follow [Semantic Versioning](htt
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.0]: https://github.com/TrueFix/localert/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/TrueFix/localert/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/TrueFix/localert/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/TrueFix/localert/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/TrueFix/localert/releases/tag/v0.3.1
 [0.3.0]: https://github.com/TrueFix/localert/releases/tag/v0.3.0

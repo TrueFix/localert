@@ -5,6 +5,8 @@ Installs Localert for the current Windows user and enables desktop-login autosta
 .\install.ps1 -BinaryPath .\localert-windows-amd64.exe
 .EXAMPLE
 .\install.ps1 -Uninstall
+.EXAMPLE
+.\install.ps1 -Uninstall -Purge
 #>
 [CmdletBinding()]
 param(
@@ -13,7 +15,8 @@ param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\Localert'),
     [string]$DataDir = (Join-Path $env:APPDATA 'localert'),
     [switch]$NoStart,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Purge
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +46,22 @@ if ($Uninstall) {
         if (Test-Path -LiteralPath $File) { Remove-Item -LiteralPath $File -Force }
     }
     Write-Host 'Localert and its login autostart entry were removed.'
-    Write-Host "Database, icons, and logs were kept. Default data location: $DataDir"
+    if ($Purge) {
+        # Remove only files Localert creates, never a whole user-chosen folder.
+        foreach ($File in @('localert.db', 'localert.db-wal', 'localert.db-shm', 'state.json')) {
+            $Path = Join-Path $DataDir $File
+            if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+        }
+        $Icons = Join-Path $DataDir 'icons'
+        if (Test-Path -LiteralPath $Icons) { Remove-Item -LiteralPath $Icons -Recurse -Force }
+        if (Test-Path -LiteralPath $LogDir) { Remove-Item -LiteralPath $LogDir -Recurse -Force }
+        foreach ($Directory in @($DataDir, $InstallDir, (Split-Path $LogDir -Parent))) {
+            if ((Test-Path -LiteralPath $Directory) -and -not (Get-ChildItem -LiteralPath $Directory -Force)) { Remove-Item -LiteralPath $Directory -Force }
+        }
+        Write-Host 'Your database, app keys, history, icons, and logs were deleted too.'
+    } else {
+        Write-Host "Your database and logs were kept in $DataDir. Run again with -Uninstall -Purge to delete them."
+    }
     exit 0
 }
 
@@ -107,7 +125,9 @@ if (Test-Path -LiteralPath $PidFile) {
 # path and double any trailing backslashes before the closing quote.
 $QuotedData = '"' + ($DataDir -replace '(\\+)$', '$1$1') + '"'
 $QuotedPid = '"' + $PidFile + '"'
-$Process = Start-Process -FilePath $Target -ArgumentList @('--data-dir', $QuotedData, '--pid-file', $QuotedPid) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $LogDir 'localert.log') -RedirectStandardError (Join-Path $LogDir 'localert-error.log')
+$QuotedLog = '"' + (Join-Path $LogDir 'localert.log') + '"'
+# Localert rotates its own log (1 MB + one backup); stderr only holds crash traces and is replaced on each start.
+$Process = Start-Process -FilePath $Target -ArgumentList @('--data-dir', $QuotedData, '--pid-file', $QuotedPid, '--log-file', $QuotedLog) -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $LogDir 'crash.log')
 Set-Content -LiteralPath $PidFile -Value $Process.Id -Encoding ASCII
 '@
 $Replacements = @{ '__TARGET__' = $Target; '__DATA__' = $DataDir; '__LOG__' = $LogDir }

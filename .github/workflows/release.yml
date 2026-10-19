@@ -143,6 +143,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out tagged source for release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write release notes
+        id: notes
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/release_notes.py "$RELEASE_TAG" > "${{ runner.temp }}/release-notes.md"
+          echo "path=${{ runner.temp }}/release-notes.md" >> "$GITHUB_OUTPUT"
+
       - name: Download tested release assets
         uses: actions/download-artifact@v4
         with:
@@ -160,6 +175,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.path }}
         run: |
           set -euo pipefail
           actual_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq '.sha')"
@@ -183,7 +199,7 @@ jobs:
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --verify-tag \
             --title "Localert $RELEASE_TAG 🔔" \
-            --generate-notes \
+            --notes-file "$RELEASE_NOTES" \
             $prerelease_flag
 
           echo "https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"

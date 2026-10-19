@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -657,6 +656,12 @@ func (s *Server) deliver(w http.ResponseWriter, r *http.Request, appID, appName 
 		apiError(w, 429, "rate_limited", "maximum of 60 notifications per minute per app")
 		return
 	}
+	// A shared budget keeps many apps together from flooding the desktop or CPU.
+	if !s.allow("all-apps", 120) {
+		w.Header().Set("Retry-After", "60")
+		apiError(w, 429, "rate_limited", "maximum of 120 notifications per minute across all apps")
+		return
+	}
 	select {
 	case s.deliveries <- struct{}{}:
 		defer func() { <-s.deliveries }()
@@ -745,20 +750,29 @@ func (s *Server) assets(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := fs.ReadFile(s.opts.Assets, assetPath)
+	// Stream straight from the embedded file: no per-request copy of large bundles.
+	file, err := s.opts.Assets.Open(assetPath)
 	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	content, seekable := file.(io.ReadSeeker)
+	if err != nil || info.IsDir() || !seekable {
 		http.NotFound(w, r)
 		return
 	}
 	if assetPath == "index.html" {
 		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", `"`+s.opts.Version+`"`)
 	} else if strings.HasPrefix(assetPath, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	if kind := mime.TypeByExtension(path.Ext(assetPath)); kind != "" {
 		w.Header().Set("Content-Type", kind)
 	}
-	http.ServeContent(w, r, assetPath, time.Time{}, bytes.NewReader(data))
+	http.ServeContent(w, r, assetPath, time.Time{}, content)
 }
 
 func (s *Server) internalError(w http.ResponseWriter, err error) {

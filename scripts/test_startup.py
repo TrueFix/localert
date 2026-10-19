@@ -54,7 +54,7 @@ class StartupTests(unittest.TestCase):
         self.process = subprocess.Popen(command, env=self.env, stdout=self.output, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            text = (self.root / "server.log").read_text()
+            text = (self.root / "server.log").read_text() + "".join(f.read_text() for f in (self.root / "logs").glob("*.log"))
             match = re.search(r"Dashboard\s+(http://\S+)", text)
             if match:
                 self.origin = match[1]
@@ -161,6 +161,52 @@ class StartupTests(unittest.TestCase):
         overview = self.request("GET", "/api/admin/overview")
         self.assertEqual(overview["address"], f"0.0.0.0:{second}")
         self.assertEqual(overview["settings"]["listen_address"], f"0.0.0.0:{second}")
+
+    def test_resources_stay_bounded_under_abuse(self):
+        import base64, socket, struct, zlib
+        def png(seed):
+            body = b"".join(b"\x00" + bytes([(seed + x) % 256 for x in range(12)]) for _ in range(4))
+            chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+            return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(body)) + chunk(b"IEND", b"")
+        def usage():
+            status = Path(f"/proc/{self.process.pid}/status").read_text()
+            field = lambda name: int(re.search(name + r":\s+(\d+)", status)[1])
+            return field("RssAnon") / 1024, field("Threads"), len(os.listdir(f"/proc/{self.process.pid}/fd"))
+        self.env["LOCALERT_MAINTENANCE_INTERVAL"] = "2s"
+        self.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/nonexistent/bus"  # no real popups
+        self.start("--no-open", "--log-file", str(self.root / "logs" / "localert.log"))
+        self.request("POST", "/api/admin/setup", {"password": "soak test password"})
+        keys = [self.request("POST", "/api/admin/keys", {"name": f"soak {i}"})["secret"] for i in range(3)]
+        codes = {}
+        for n in range(200):
+            icon = "data:image/png;base64," + base64.b64encode(png(n)).decode()
+            request = urllib.request.Request(self.origin + "/api/notify", method="POST", data=json.dumps({"title": f"Soak {n}", "message": "x" * 1000, "icon": icon}).encode(), headers={"Content-Type": "application/json", "Authorization": f"Bearer {keys[n % 3]}"})
+            try:
+                urllib.request.urlopen(request, timeout=10).close(); code = 200
+            except urllib.error.HTTPError as error:
+                code = error.code
+            codes[code] = codes.get(code, 0) + 1
+        self.assertEqual(codes.get(429), 80, codes)  # global budget: 120 per minute across all apps
+        script = re.search(r'src="(/assets/[^"]+\.js)"', urllib.request.urlopen(self.origin + "/").read().decode())[1]
+        for _ in range(100):
+            urllib.request.urlopen(self.origin + script).read()
+        # Idle connections beyond the cap must not block the service for long.
+        sockets = [socket.create_connection(("127.0.0.1", int(self.origin.rsplit(":", 1)[1]))) for _ in range(90)]
+        started = time.monotonic()
+        self.assertEqual(self.request("GET", "/api/health")["status"], "ok")
+        self.assertLess(time.monotonic() - started, 10)
+        for sock in sockets:
+            sock.close()
+        time.sleep(5)  # let maintenance prune and return memory
+        private_mb, threads, fds = usage()
+        self.assertLess(private_mb, 30, "private memory should return close to idle")
+        self.assertLess(threads, 20)
+        self.assertLess(fds, 40, "connections must be released")
+        icons = list((self.data / "icons").glob("*.png"))
+        self.assertLessEqual(len(icons), 64 + 5)
+        logs = list((self.root / "logs").glob("localert.log*"))
+        self.assertTrue(logs)
+        self.assertTrue(all(log.stat().st_size <= 1 << 20 for log in logs))
 
     def wait_for_restart(self, previous, version=None):
         deadline = time.monotonic() + 30

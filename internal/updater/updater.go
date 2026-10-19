@@ -238,6 +238,12 @@ func (m *Manager) Install() error {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer func() {
+			// An unexpected failure must not take the notification service down.
+			if recovered := recover(); recovered != nil {
+				m.fail(fmt.Errorf("update failed unexpectedly: %v", recovered))
+			}
+		}()
 		if err := m.install(asset, version); err != nil {
 			m.fail(err)
 		}

@@ -74,7 +74,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(shlex.split(command), ["/bin/sh", str(launcher)])
         self.assertEqual(config["Desktop Entry"]["Terminal"], "false")
         subprocess.run(["sh", str(launcher)], env=self.env, check=True)
-        self.assertEqual(Path(self.env["TEST_BINARY_ARGS"]).read_text().splitlines(), ["--data-dir", str(database.parent), "--pid-file", str(Path(self.env["XDG_STATE_HOME"]) / "localert/localert.pid")])
+        self.assertEqual(Path(self.env["TEST_BINARY_ARGS"]).read_text().splitlines(), ["--data-dir", str(database.parent), "--pid-file", str(Path(self.env["XDG_STATE_HOME"]) / "localert/localert.pid"), "--log-file", str(Path(self.env["XDG_STATE_HOME"]) / "localert/localert.log")])
         database.write_bytes(b"existing database, must not be touched")
         self.install("--no-start")
         self.assertEqual(database.read_bytes(), b"existing database, must not be touched")
@@ -83,6 +83,24 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(desktop.exists())
         self.assertFalse(launcher.exists())
         self.assertTrue(database.exists())
+
+    def test_uninstall_purge_removes_only_localert_files(self):
+        self.install("--no-start")
+        data = Path(self.env["XDG_CONFIG_HOME"]) / "localert"
+        logs = Path(self.env["XDG_STATE_HOME"]) / "localert"
+        (data / "localert.db").write_text("db")
+        (data / "icons").mkdir()
+        (data / "icons" / "a.png").write_text("png")
+        (logs / "localert.log").write_text("log")
+        keep = data / "my-notes.txt"
+        keep.write_text("not ours")
+        self.install("--uninstall")
+        self.assertTrue((data / "localert.db").exists(), "plain uninstall keeps data")
+        self.install("--uninstall", "--purge")
+        self.assertFalse((data / "localert.db").exists())
+        self.assertFalse((data / "icons").exists())
+        self.assertFalse((logs / "localert.log").exists())
+        self.assertTrue(keep.exists(), "purge must never delete unrelated files")
 
     def test_macos_launchagent_and_custom_data_directory(self):
         self.env["MOCK_OS"] = "Darwin"
@@ -99,7 +117,7 @@ class InstallerTests(unittest.TestCase):
         calls = Path(self.env["TEST_LAUNCHCTL_ARGS"]).read_text()
         self.assertNotIn("bootstrap", calls)
         subprocess.run(["sh", str(launcher)], env=self.env, check=True)
-        self.assertEqual(Path(self.env["TEST_BINARY_ARGS"]).read_text().splitlines(), ["--data-dir", str(data), "--pid-file", str(self.home / "Library/Logs/Localert/localert.pid")])
+        self.assertEqual(Path(self.env["TEST_BINARY_ARGS"]).read_text().splitlines(), ["--data-dir", str(data), "--pid-file", str(self.home / "Library/Logs/Localert/localert.pid"), "--log-file", str(self.home / "Library/Logs/Localert/localert.log")])
         self.install("--uninstall")
         self.assertFalse(agent.exists())
         self.assertTrue(data.exists())

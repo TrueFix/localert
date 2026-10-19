@@ -96,6 +96,10 @@ func Open(dir string) (*Store, error) {
 	query := u.Query()
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "foreign_keys(ON)")
+	// Long-running installs: checkpoint often, shrink the WAL afterwards, and keep a small page cache.
+	query.Add("_pragma", "wal_autocheckpoint(256)")
+	query.Add("_pragma", "journal_size_limit(1048576)")
+	query.Add("_pragma", "cache_size(-512)")
 	u.RawQuery = query.Encode()
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {

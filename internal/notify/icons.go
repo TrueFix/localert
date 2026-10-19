@@ -17,17 +17,33 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 const maxIconBytes = 1 << 20
+
+// MaxCachedIcons bounds custom icon files on disk; least recently used go first.
+const MaxCachedIcons = 64
+
+const remoteIconTTL = time.Hour
 
 // Icons normalizes built-in icons, HTTPS images, and data URLs into private PNGs.
 // Cached paths survive delivery, as desktop systems may read an icon asynchronously.
 type Icons struct {
 	dir    string
 	client *http.Client
+
+	mu      sync.Mutex
+	builtin map[string]string     // name -> generated file, protected from pruning
+	remote  map[string]remoteIcon // HTTPS URL -> recently downloaded file
+}
+
+type remoteIcon struct {
+	path    string
+	expires time.Time
 }
 
 func NewIcons(dataDir string) (*Icons, error) {
@@ -35,7 +51,7 @@ func NewIcons(dataDir string) (*Icons, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return &Icons{dir: dir, client: &http.Client{
+	return &Icons{dir: dir, builtin: map[string]string{}, remote: map[string]remoteIcon{}, client: &http.Client{
 		Timeout: 5 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
@@ -52,6 +68,17 @@ func NewIcons(dataDir string) (*Icons, error) {
 func (icons *Icons) Resolve(ctx context.Context, icon string) (string, error) {
 	if icon == "" {
 		icon = "bell"
+	}
+	icons.mu.Lock()
+	cached, isBuiltin := icons.builtin[icon]
+	remote, isRemote := icons.remote[icon]
+	icons.mu.Unlock()
+	if isBuiltin && fileExists(cached) {
+		return cached, nil
+	}
+	if isRemote && time.Now().Before(remote.expires) && fileExists(remote.path) {
+		touch(remote.path)
+		return remote.path, nil
 	}
 	var img image.Image
 	switch icon {
@@ -106,7 +133,22 @@ func (icons *Icons) Resolve(ctx context.Context, icon string) (string, error) {
 	}
 	digest := sha256.Sum256(output.Bytes())
 	path := filepath.Join(icons.dir, hex.EncodeToString(digest[:])+".png")
-	if _, err := os.Stat(path); err == nil {
+	remember := func() {
+		icons.mu.Lock()
+		defer icons.mu.Unlock()
+		switch {
+		case isBuiltinName(icon):
+			icons.builtin[icon] = path
+		case strings.HasPrefix(icon, "https://"):
+			if len(icons.remote) >= MaxCachedIcons {
+				icons.remote = map[string]remoteIcon{}
+			}
+			icons.remote[icon] = remoteIcon{path: path, expires: time.Now().Add(remoteIconTTL)}
+		}
+	}
+	if fileExists(path) {
+		touch(path)
+		remember()
 		return path, nil
 	}
 	f, err := os.CreateTemp(icons.dir, ".icon-*.tmp")
@@ -127,8 +169,62 @@ func (icons *Icons) Resolve(ctx context.Context, icon string) (string, error) {
 			return "", err
 		}
 	}
+	remember()
 	return path, nil
 }
+
+// Prune deletes the least recently used custom icons beyond MaxCachedIcons.
+// Built-in icons are never removed. Stray temporary files are cleaned up too.
+func (icons *Icons) Prune() error {
+	entries, err := os.ReadDir(icons.dir)
+	if err != nil {
+		return err
+	}
+	icons.mu.Lock()
+	protected := map[string]bool{}
+	for _, path := range icons.builtin {
+		protected[filepath.Base(path)] = true
+	}
+	icons.mu.Unlock()
+	type cachedFile struct {
+		name string
+		used time.Time
+	}
+	var files []cachedFile
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil || entry.IsDir() || protected[entry.Name()] {
+			continue
+		}
+		if strings.HasSuffix(entry.Name(), ".tmp") {
+			if time.Since(info.ModTime()) > time.Hour {
+				_ = os.Remove(filepath.Join(icons.dir, entry.Name()))
+			}
+			continue
+		}
+		files = append(files, cachedFile{entry.Name(), info.ModTime()})
+	}
+	if len(files) <= MaxCachedIcons {
+		return nil
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].used.After(files[j].used) })
+	for _, file := range files[MaxCachedIcons:] {
+		_ = os.Remove(filepath.Join(icons.dir, file.name))
+	}
+	return nil
+}
+
+func isBuiltinName(name string) bool {
+	switch name {
+	case "bell", "info", "success", "warning", "error":
+		return true
+	}
+	return false
+}
+
+func fileExists(path string) bool { _, err := os.Stat(path); return err == nil }
+
+func touch(path string) { now := time.Now(); _ = os.Chtimes(path, now, now) }
 
 // The small default icon is generated in-process, so it is embedded in the executable too.
 func builtinIcon(kind string) image.Image {
