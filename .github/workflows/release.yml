@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+
+jobs:
+  build:
+    name: Build and test release
+    if: github.event.created && !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      source_sha: ${{ steps.metadata.outputs.source_sha }}
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Read release metadata
+        id: metadata
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          tag = os.environ["RELEASE_TAG"]
+          match = re.fullmatch(
+              r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+              r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+              tag,
+              flags=re.ASCII,
+          )
+          if not match:
+              raise SystemExit("Use a version tag such as v0.3.2 or v0.4.0-rc.1")
+          prerelease = match.group(4)
+          if prerelease and any(part.isdigit() and len(part) > 1 and part[0] == "0" for part in prerelease.split(".")):
+              raise SystemExit("Numeric prerelease identifiers must not have leading zeros")
+          go_version = re.search(r"^go (\d+\.\d+)", Path("go.mod").read_text(), re.MULTILINE)
+          if not go_version:
+              raise SystemExit("Cannot determine the Go version from go.mod")
+          source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={tag[1:]}\n")
+              output.write(f"prerelease={str(bool(prerelease)).lower()}\n")
+              output.write(f"go_version={go_version.group(1)}.x\n")
+              output.write(f"source_sha={source_sha}\n")
+          PY
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ steps.metadata.outputs.go_version }}
+          check-latest: true
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build binaries, installers, and update manifest
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+          RELEASE_BASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/
+          UPDATE_FEED_URL: ${{ github.server_url }}/${{ github.repository }}/releases/latest/download/update-manifest.json
+        run: |
+          make release VERSION="$VERSION" RELEASE_BASE_URL="$RELEASE_BASE_URL" UPDATE_FEED_URL="$UPDATE_FEED_URL"
+          cp bin/localert-linux-amd64 bin/localert
+          test "$(bin/localert --version)" = "Localert $VERSION"
+
+      - name: Check backend and installers
+        run: make check
+
+      - name: Install browser dependencies
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Check desktop and mobile browser flows
+        working-directory: web
+        env:
+          LOCALERT_E2E_NATIVE: '0'
+        run: npm test
+
+      - name: Verify release checksums
+        working-directory: bin
+        run: sha256sum --check --strict SHA256SUMS
+
+      - name: Save release assets
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: localert-release
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+          path: |
+            bin/localert-linux-amd64
+            bin/localert-linux-arm64
+            bin/localert-windows-amd64.exe
+            bin/localert-macos-amd64
+            bin/localert-macos-arm64
+            bin/install.sh
+            bin/install.ps1
+            bin/SHA256SUMS
+            bin/update-manifest.json
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested release assets
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: localert-release
+          path: dist
+
+      - name: Verify downloaded assets
+        working-directory: dist
+        run: sha256sum --check --strict SHA256SUMS
+
+      - name: Publish the release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq '.sha')"
+          test "$actual_sha" = "$SOURCE_SHA"
+
+          assets=(
+            localert-linux-amd64 localert-linux-arm64
+            localert-windows-amd64.exe
+            localert-macos-amd64 localert-macos-arm64
+            install.sh install.ps1 SHA256SUMS update-manifest.json
+          )
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+          done
+
+          existing="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ "$existing" == 'false' ]]; then
+            printf 'Release %s is already published.\n' "$RELEASE_TAG"
+            exit 0
+          elif [[ "$existing" == 'true' ]]; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag --draft --generate-notes \
+              --title "Localert $RELEASE_TAG 🔔"
+          fi
+
+          release_id="$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" --jq '.id')"
+          latest='legacy'
+          if [[ "$PRERELEASE" == 'true' ]]; then
+            latest='false'
+          fi
+          gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
+            -F draft=false -F "prerelease=$PRERELEASE" -f "make_latest=$latest" \
+            --jq '.html_url'

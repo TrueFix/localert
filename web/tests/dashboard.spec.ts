@@ -167,6 +167,8 @@ test("embedded dashboard manages app keys and native delivery on desktop and mob
   await page.getByRole("button", { name: "Change password", exact: true }).click()
   await expect(page.getByText("Dashboard password changed", { exact: true })).toBeVisible()
   await page.getByRole("tab", { name: "Software updates", exact: true }).click()
+  const updateSource = page.locator("details.source-details")
+  if (await updateSource.getAttribute("open") === null) await updateSource.locator("summary").click()
   await page.getByLabel("Release manifest URL", { exact: true }).fill(feed)
   await page.getByRole("button", { name: "Save update source", exact: true }).click()
   await expect(page.getByRole("button", { name: "Check for updates", exact: true })).toBeEnabled()
