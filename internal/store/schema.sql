@@ -42,8 +42,9 @@ CREATE TABLE IF NOT EXISTS preferences (
   retention_mode TEXT NOT NULL DEFAULT 'count',
   retention_count INTEGER NOT NULL DEFAULT 100,
   retention_days INTEGER NOT NULL DEFAULT 30,
-  update_feed TEXT NOT NULL DEFAULT ''
+  update_feed TEXT NOT NULL DEFAULT '',
+  listen_address TEXT NOT NULL DEFAULT '127.0.0.1:8787'
 );
 INSERT INTO preferences (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 COMMIT;

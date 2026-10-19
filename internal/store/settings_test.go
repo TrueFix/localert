@@ -129,3 +129,34 @@ func TestPublisherFeedNeverOverridesUsersChoice(t *testing.T) {
 		t.Fatal("publisher default overrode disabled updates")
 	}
 }
+
+func TestListenAddressValidationPersistenceAndUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	s := openTestStore(t, dir)
+	settings, err := s.Settings()
+	if err != nil || settings.ListenAddress != DefaultListenAddress {
+		t.Fatalf("default address: %+v %v", settings, err)
+	}
+	for _, bad := range []string{"", "8787", "192.168.1.5:8787", "localhost:8787", "0.0.0.0:80", "0.0.0.0:70000", "0.0.0.0:08787", "0.0.0.0:abc"} {
+		if err := s.SetListenAddress(bad); !errors.Is(err, ErrInvalidAddress) {
+			t.Errorf("accepted %q: %v", bad, err)
+		}
+	}
+	if err := s.SetListenAddress("0.0.0.0:9090"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = openTestStore(t, dir)
+	if settings, _ := s.Settings(); settings.ListenAddress != "0.0.0.0:9090" {
+		t.Fatalf("address did not persist: %q", settings.ListenAddress)
+	}
+	// A version-2 database without the column is upgraded with the safe default.
+	if _, err := s.db.Exec("ALTER TABLE preferences DROP COLUMN listen_address; PRAGMA user_version = 2"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s = openTestStore(t, dir)
+	if settings, err := s.Settings(); err != nil || settings.ListenAddress != DefaultListenAddress {
+		t.Fatalf("upgrade default: %+v %v", settings, err)
+	}
+}

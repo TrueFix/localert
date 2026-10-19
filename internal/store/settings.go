@@ -3,10 +3,29 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"net"
+	"strconv"
 	"time"
 )
 
 var ErrInvalidRetention = errors.New("choose count, days, both, or forever; count must be 1–100000 and days must be 1–3650")
+var ErrInvalidAddress = errors.New("choose 127.0.0.1 (this computer) or 0.0.0.0 (all interfaces) with a port from 1024 to 65535")
+
+// DefaultListenAddress keeps the dashboard private to this computer.
+const DefaultListenAddress = "127.0.0.1:8787"
+
+// ValidateListenAddress accepts loopback-only or all-interface addresses.
+func ValidateListenAddress(value string) error {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil || (host != "127.0.0.1" && host != "0.0.0.0") {
+		return ErrInvalidAddress
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1024 || number > 65535 || strconv.Itoa(number) != port {
+		return ErrInvalidAddress
+	}
+	return nil
+}
 
 type Retention struct {
 	Mode  string `json:"mode"`
@@ -15,19 +34,41 @@ type Retention struct {
 }
 
 type Settings struct {
-	Retention  Retention `json:"retention"`
-	UpdateFeed string    `json:"update_feed"`
+	Retention     Retention `json:"retention"`
+	UpdateFeed    string    `json:"update_feed"`
+	ListenAddress string    `json:"listen_address"`
 }
 
 type queryer interface{ QueryRow(string, ...any) *sql.Row }
 
 func readSettings(q queryer) (Settings, error) {
 	var result Settings
-	err := q.QueryRow("SELECT retention_mode, retention_count, retention_days, update_feed FROM preferences WHERE id = 1").Scan(&result.Retention.Mode, &result.Retention.Count, &result.Retention.Days, &result.UpdateFeed)
+	err := q.QueryRow("SELECT retention_mode, retention_count, retention_days, update_feed, listen_address FROM preferences WHERE id = 1").Scan(&result.Retention.Mode, &result.Retention.Count, &result.Retention.Days, &result.UpdateFeed, &result.ListenAddress)
 	return result, err
 }
 
 func (s *Store) Settings() (Settings, error) { return readSettings(s.db) }
+
+// addListenAddressColumn upgrades databases created before network settings.
+func (s *Store) addListenAddressColumn() error {
+	var count int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('preferences') WHERE name = 'listen_address'").Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := s.db.Exec("ALTER TABLE preferences ADD COLUMN listen_address TEXT NOT NULL DEFAULT '" + DefaultListenAddress + "'")
+	return err
+}
+
+func (s *Store) SetListenAddress(value string) error {
+	if err := ValidateListenAddress(value); err != nil {
+		return err
+	}
+	_, err := s.db.Exec("UPDATE preferences SET listen_address = ? WHERE id = 1", value)
+	return err
+}
 
 func (s *Store) SetRetention(value Retention) error {
 	if (value.Mode != "count" && value.Mode != "days" && value.Mode != "both" && value.Mode != "forever") || value.Count < 1 || value.Count > 100000 || value.Days < 1 || value.Days > 3650 {

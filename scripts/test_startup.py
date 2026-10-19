@@ -46,9 +46,12 @@ class StartupTests(unittest.TestCase):
         self.addCleanup(self.stop)
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def start(self, *options):
+    def start(self, *options, address="127.0.0.1:0"):
         self.output = (self.root / "server.log").open("w")
-        self.process = subprocess.Popen([str(self.executable), "--addr", "127.0.0.1:0", "--data-dir", str(self.data), *options], env=self.env, stdout=self.output, stderr=subprocess.STDOUT)
+        command = [str(self.executable), "--data-dir", str(self.data), *options]
+        if address:
+            command[1:1] = ["--addr", address]
+        self.process = subprocess.Popen(command, env=self.env, stdout=self.output, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             text = (self.root / "server.log").read_text()
@@ -135,6 +138,29 @@ class StartupTests(unittest.TestCase):
         self.assertEqual((self.root / "localert.pid").read_text().strip(), str(self.process.pid))
         self.request("POST", "/api/admin/login", {"password": "restart user password"})
         self.assertEqual(self.request("GET", "/api/admin/keys")["keys"][0]["id"], created["key"]["id"])
+
+    def test_network_setting_moves_to_all_interfaces_after_restart(self):
+        import socket, sqlite3
+        def free_port():
+            with socket.socket() as sock:
+                sock.bind(("127.0.0.1", 0))
+                return sock.getsockname()[1]
+        first, second = free_port(), free_port()
+        subprocess.run([str(BINARY), "--data-dir", str(self.data), "--reset-password"], env=self.env, check=True, capture_output=True, timeout=15)
+        with sqlite3.connect(self.data / "localert.db") as db:
+            db.execute("UPDATE preferences SET listen_address = ?", (f"127.0.0.1:{first}",))
+        self.start("--no-open", address=None)
+        self.assertTrue(self.origin.endswith(f":{first}"))
+        self.request("POST", "/api/admin/setup", {"password": "network user password"})
+        self.assertFalse(self.request("GET", "/api/admin/overview")["address_locked"])
+        previous = self.request("GET", "/api/health")["instance_id"]
+        self.request("PUT", "/api/admin/settings/network", {"listen_address": f"0.0.0.0:{second}"})
+        self.origin = f"http://127.0.0.1:{second}"
+        self.wait_for_restart(previous)
+        self.request("POST", "/api/admin/login", {"password": "network user password"})
+        overview = self.request("GET", "/api/admin/overview")
+        self.assertEqual(overview["address"], f"0.0.0.0:{second}")
+        self.assertEqual(overview["settings"]["listen_address"], f"0.0.0.0:{second}")
 
     def wait_for_restart(self, previous, version=None):
         deadline = time.monotonic() + 30

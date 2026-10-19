@@ -133,7 +133,7 @@ func (icons *Icons) Resolve(ctx context.Context, icon string) (string, error) {
 // The small default icon is generated in-process, so it is embedded in the executable too.
 func builtinIcon(kind string) image.Image {
 	img := image.NewNRGBA(image.Rect(0, 0, 128, 128))
-	
+
 	// Background colors
 	var bg color.NRGBA
 	switch kind {
@@ -149,7 +149,7 @@ func builtinIcon(kind string) image.Image {
 		bg = color.NRGBA{R: 139, G: 92, B: 246, A: 255} // Purple
 	}
 	white := color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	
+
 	// Draw rounded rectangle background
 	for y := 0; y < 128; y++ {
 		for x := 0; x < 128; x++ {
@@ -170,7 +170,7 @@ func builtinIcon(kind string) image.Image {
 			}
 		}
 	}
-	
+
 	// Draw icon symbol
 	switch kind {
 	case "success": // Checkmark

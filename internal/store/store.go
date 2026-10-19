@@ -108,7 +108,7 @@ func Open(dir string) (*Store, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fail(errors.New("database was created by a newer Localert version"))
 	}
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
@@ -116,6 +116,9 @@ func Open(dir string) (*Store, error) {
 	}
 	if _, err := db.Exec(schema); err != nil {
 		return fail(fmt.Errorf("initialize SQLite: %w", err))
+	}
+	if err := s.addListenAddressColumn(); err != nil {
+		return fail(fmt.Errorf("upgrade SQLite: %w", err))
 	}
 	if err := s.migrateJSON(dir); err != nil {
 		return fail(err)

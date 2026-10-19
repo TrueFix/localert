@@ -39,6 +39,8 @@ type Options struct {
 	Address string
 	Logger  *slog.Logger
 	Updater *updater.Manager
+	// AddressLocked is true when --addr was passed, which overrides the saved setting.
+	AddressLocked bool
 }
 
 type session struct {
@@ -85,6 +87,7 @@ func New(opts Options) *Server {
 	mux.Handle("POST /api/admin/test", s.admin(http.HandlerFunc(s.testNotification)))
 	mux.Handle("PUT /api/admin/settings/retention", s.admin(http.HandlerFunc(s.saveRetention)))
 	mux.Handle("PUT /api/admin/settings/updates", s.admin(http.HandlerFunc(s.saveUpdateFeed)))
+	mux.Handle("PUT /api/admin/settings/network", s.admin(http.HandlerFunc(s.saveNetwork)))
 	mux.Handle("GET /api/admin/updates", s.admin(http.HandlerFunc(s.updateStatus)))
 	mux.Handle("POST /api/admin/updates/check", s.admin(http.HandlerFunc(s.checkUpdates)))
 	mux.Handle("POST /api/admin/updates/install", s.admin(http.HandlerFunc(s.installUpdate)))
@@ -374,12 +377,68 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, struct {
 		store.Snapshot
-		Version      string    `json:"version"`
-		Platform     string    `json:"platform"`
-		StartedAt    time.Time `json:"started_at"`
-		Address      string    `json:"address"`
-		DatabasePath string    `json:"database_path"`
-	}{snapshot, s.opts.Version, runtime.GOOS, s.started, s.opts.Address, s.opts.Store.Path()})
+		Version       string    `json:"version"`
+		Platform      string    `json:"platform"`
+		StartedAt     time.Time `json:"started_at"`
+		Address       string    `json:"address"`
+		DatabasePath  string    `json:"database_path"`
+		AddressLocked bool      `json:"address_locked"`
+		LANAddresses  []string  `json:"lan_addresses"`
+	}{snapshot, s.opts.Version, runtime.GOOS, s.started, s.opts.Address, s.opts.Store.Path(), s.opts.AddressLocked, lanAddresses()})
+}
+
+// lanAddresses lists this computer's private IPv4 addresses for display.
+func lanAddresses() []string {
+	result := []string{}
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return result
+	}
+	for _, address := range addresses {
+		network, ok := address.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := network.IP.To4()
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		result = append(result, ip.String())
+	}
+	return result
+}
+
+func (s *Server) saveNetwork(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ListenAddress string `json:"listen_address"`
+	}
+	if !decodeJSON(w, r, &body, 4096) {
+		return
+	}
+	if s.opts.AddressLocked {
+		apiError(w, 409, "address_locked", "Localert was started with --addr; remove that flag to manage the address here")
+		return
+	}
+	if err := store.ValidateListenAddress(body.ListenAddress); err != nil {
+		apiError(w, 400, "invalid_address", err.Error())
+		return
+	}
+	if !s.hasUpdater(w) {
+		return
+	}
+	if s.opts.Updater.Busy() {
+		apiError(w, 409, "restart_busy", updater.ErrBusy.Error())
+		return
+	}
+	if err := s.opts.Store.SetListenAddress(body.ListenAddress); err != nil {
+		s.internalError(w, err)
+		return
+	}
+	if err := s.opts.Updater.RequestRestart(); err != nil {
+		apiError(w, 409, "restart_busy", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"listen_address": body.ListenAddress, "status": "restarting"})
 }
 
 func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {

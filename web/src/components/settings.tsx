@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowDownToLineIcon, CheckIcon, CopyIcon, DownloadCloudIcon, HeartIcon, HistoryIcon, KeyRoundIcon, LoaderCircleIcon, MonitorIcon, RefreshCwIcon, RotateCcwIcon, SaveIcon, ShieldCheckIcon, SlidersHorizontalIcon, SparklesIcon } from "lucide-react"
+import { ArrowDownToLineIcon, CheckIcon, CopyIcon, DownloadCloudIcon, HeartIcon, HistoryIcon, KeyRoundIcon, LoaderCircleIcon, MonitorIcon, RefreshCwIcon, RotateCcwIcon, SaveIcon, ShieldCheckIcon, SlidersHorizontalIcon, SparklesIcon, WifiIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -83,6 +83,64 @@ function UpdateSettings() {
   </div>
 }
 
+function NetworkSettings() {
+  const { data, watchRestart } = useLocalert()
+  const [savedHost, savedPort] = splitAddress(data.settings.listen_address)
+  const [scope, setScope] = useState<"local" | "network">(savedHost === "0.0.0.0" ? "network" : "local")
+  const [port, setPort] = useState(savedPort)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const [moving, setMoving] = useState("")
+  const target = `${scope === "network" ? "0.0.0.0" : "127.0.0.1"}:${port}`
+  const changed = target !== data.settings.listen_address
+  const remote = !["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname)
+  const portNumber = Number(port)
+  const validPort = /^\d+$/.test(port) && portNumber >= 1024 && portNumber <= 65535
+  const choices = [
+    { value: "local", title: "Just this computer", description: "Only apps on this PC can reach Localert (127.0.0.1).", symbol: "⌂" },
+    { value: "network", title: "My whole network", description: "Phones, servers, and other PCs can send notifications (0.0.0.0).", symbol: "⌘" },
+  ] as const
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault()
+    if (!validPort) { setError("Choose a port from 1024 to 65535."); return }
+    setBusy(true); setError("")
+    try {
+      const health = await api<{ instance_id: string }>("/api/health")
+      await api("/api/admin/settings/network", { method: "PUT", body: JSON.stringify({ listen_address: target }) })
+      if (port !== window.location.port || (scope === "local" && remote)) {
+        // The dashboard moves to a new address; navigation is allowed across ports.
+        const host = scope === "local" && remote ? "127.0.0.1" : window.location.hostname
+        const next = `${window.location.protocol}//${host}:${port}/#settings`
+        setMoving(next)
+        window.setTimeout(() => { window.location.href = next }, 3000)
+      } else {
+        watchRestart("restart", health.instance_id)
+      }
+    } catch (error) { setError(errorMessage(error)); setBusy(false) }
+  }
+
+  if (moving) return <div className="flex flex-col gap-4"><SectionHeader title="Moving to a new address" description="Localert is restarting. This page will follow it in a moment." icon={WifiIcon} /><div className="flex items-center gap-3 rounded-2xl bg-lavender p-4 text-sm"><LoaderCircleIcon className="size-5 shrink-0 animate-spin text-primary" /><span className="break-all">Opening <strong>{moving}</strong></span></div><p className="text-sm text-muted-foreground">If nothing happens, open that address yourself. If the port is busy, Localert falls back to <code>http://127.0.0.1:8787</code>.</p></div>
+
+  return <form className="flex flex-col gap-6" onSubmit={save}>
+    <SectionHeader title="Who can reach Localert?" description="Choose whether only this computer, or every device on your network, can send notifications." icon={WifiIcon} />
+    {data.address_locked && <p role="status" className="rounded-xl bg-peach p-4 text-sm text-peach-foreground">Localert was started with <code className="whitespace-nowrap">--addr {data.address}</code>, which overrides this setting. Remove that flag to manage the address here.</p>}
+    <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Network access">{choices.map(choice => <button key={choice.value} type="button" disabled={data.address_locked} aria-pressed={scope === choice.value} onClick={() => setScope(choice.value)} className={`preference-tile ${scope === choice.value ? "selected" : ""}`}><span className="preference-symbol">{choice.symbol}</span><span className="min-w-0 flex-1 text-left"><strong>{choice.title}</strong><small>{choice.description}</small></span>{scope === choice.value && <CheckIcon className="size-4 shrink-0 text-primary" />}</button>)}</div>
+    <div className="max-w-xs space-y-2"><Label htmlFor="listen-port">Port</Label><Input id="listen-port" inputMode="numeric" disabled={data.address_locked} value={port} onChange={event => setPort(event.target.value.trim())} aria-invalid={!validPort} /><p className="text-xs text-muted-foreground">From 1024 to 65535. The default is 8787.</p></div>
+    {scope === "network" && <div className="space-y-3 rounded-2xl bg-mint p-4 text-mint-foreground"><p className="text-sm font-bold">Reach Localert from other devices</p>{data.lan_addresses.length ? <ul className="space-y-2">{data.lan_addresses.map(ip => { const url = `http://${ip}:${port}/api/notify`; return <li key={ip} className="flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-sm">{url}</code><Button type="button" size="icon-sm" variant="ghost" aria-label={`Copy ${url}`} onClick={async () => { try { await copy(url); toast.success("Address copied") } catch (error) { toast.error(errorMessage(error)) } }}><CopyIcon /></Button></li> })}</ul> : <p className="text-sm">No network address found. Connect to Wi-Fi or Ethernet first.</p>}</div>}
+    {scope === "network" && <p className="rounded-xl bg-peach p-4 text-sm leading-6 text-peach-foreground"><strong>Use trusted networks only.</strong> Other devices can open the sign-in page and call the API. App keys and your password still protect everything, but traffic is plain HTTP. First-time setup is always limited to this computer.</p>}
+    {scope === "local" && remote && changed && <p className="rounded-xl bg-peach p-4 text-sm text-peach-foreground">You're connected from another device. After this change, open the dashboard on the Localert computer itself.</p>}
+    {data.settings.listen_address !== data.address && !data.address_locked && !changed && <p className="text-sm text-muted-foreground">Saved address <code>{data.settings.listen_address}</code> was unavailable, so Localert is using <code>{data.address}</code>. Try another port.</p>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    <div className="flex flex-wrap items-center gap-3 border-t pt-5"><Button type="submit" disabled={busy || data.address_locked || !changed}>{busy ? <LoaderCircleIcon className="animate-spin" /> : <RotateCcwIcon />}Save & restart</Button><span className="text-sm text-muted-foreground">Listening on <code>{data.address}</code></span></div>
+  </form>
+}
+
+function splitAddress(value: string): [string, string] {
+  const index = value.lastIndexOf(":")
+  return index < 0 ? ["127.0.0.1", "8787"] : [value.slice(0, index), value.slice(index + 1)]
+}
+
 function PasswordSettings() {
   const [current, setCurrent] = useState("")
   const [replacement, setReplacement] = useState("")
@@ -106,6 +164,6 @@ function InstanceSettings() {
 
 export function Settings() {
   const [tab, setTab] = useState("preferences")
-  const sections = [{ id: "preferences", label: "Preferences", icon: SlidersHorizontalIcon }, { id: "updates", label: "Software updates", icon: DownloadCloudIcon }, { id: "security", label: "Security", icon: ShieldCheckIcon }, { id: "about", label: "About this nook", icon: MonitorIcon }]
-  return <div className="page-stack"><PageHeading eyebrow="MAKE YOURSELF AT HOME" title="Just the way you like it." description="A few thoughtful touches to make Localert feel like yours." /><Card className="settings-card"><Tabs value={tab} onValueChange={setTab} orientation="vertical" className="settings-tabs"><TabsList className="settings-tab-list">{sections.map(section => <TabsTrigger value={section.id} key={section.id}><section.icon />{section.label}</TabsTrigger>)}</TabsList><div className="settings-content"><TabsContent value="preferences"><RetentionSettings /></TabsContent><TabsContent value="updates"><UpdateSettings /></TabsContent><TabsContent value="security"><PasswordSettings /></TabsContent><TabsContent value="about"><InstanceSettings /></TabsContent></div></Tabs></Card></div>
+  const sections = [{ id: "preferences", label: "Preferences", icon: SlidersHorizontalIcon }, { id: "network", label: "Network", icon: WifiIcon }, { id: "updates", label: "Software updates", icon: DownloadCloudIcon }, { id: "security", label: "Security", icon: ShieldCheckIcon }, { id: "about", label: "About this nook", icon: MonitorIcon }]
+  return <div className="page-stack"><PageHeading eyebrow="MAKE YOURSELF AT HOME" title="Just the way you like it." description="A few thoughtful touches to make Localert feel like yours." /><Card className="settings-card"><Tabs value={tab} onValueChange={setTab} orientation="vertical" className="settings-tabs"><TabsList className="settings-tab-list">{sections.map(section => <TabsTrigger value={section.id} key={section.id}><section.icon />{section.label}</TabsTrigger>)}</TabsList><div className="settings-content"><TabsContent value="preferences"><RetentionSettings /></TabsContent><TabsContent value="network"><NetworkSettings /></TabsContent><TabsContent value="updates"><UpdateSettings /></TabsContent><TabsContent value="security"><PasswordSettings /></TabsContent><TabsContent value="about"><InstanceSettings /></TabsContent></div></Tabs></Card></div>
 }

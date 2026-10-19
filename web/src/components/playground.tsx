@@ -41,7 +41,7 @@ export function Playground() {
 
   return <div className="page-stack">
     <PageHeading eyebrow="MAKE A LITTLE NOISE" title="Say hello to your desktop." description="A title, a message, and a little personality. Go on, give it a ping." />
-    <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
+    <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6 [&>*]:min-w-0">
       <Card><CardHeader><CardTitle>Compose a notification</CardTitle><CardDescription>A title, a message, and a little personality.</CardDescription></CardHeader><CardContent><form onSubmit={send} className="space-y-6">
         <div className="space-y-2"><Label htmlFor="notification-title">Title</Label><Input id="notification-title" value={title} onChange={e => setTitle(e.target.value)} maxLength={128} required /></div>
         <div className="space-y-2"><Label htmlFor="notification-message">Message</Label><Textarea id="notification-message" className="min-h-28 resize-y" value={message} onChange={e => setMessage(e.target.value)} maxLength={4096} required /><p className="text-muted-foreground text-right text-xs">{message.length.toLocaleString()} / 4,096</p></div>

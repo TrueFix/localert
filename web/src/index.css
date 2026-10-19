@@ -215,11 +215,12 @@ pre { tab-size: 2; }
 .metrics [data-slot=card-header] { grid-template-columns: minmax(0, 1fr) auto; }
 .metrics [data-slot=card-title] { font-size: 1rem; font-weight: 750; color: var(--foreground); }
 .metrics [data-slot=card-action] button { width: 2.75rem; height: 2.75rem; padding: 0; color: var(--muted-foreground); }
+.metrics [data-slot=card-action] { align-self: center; margin-block: -0.75rem; }
 .metrics [data-slot=card-content] { align-items: center; flex-wrap: wrap; gap: 10px; }
 .metrics [data-slot=card-content]>span { margin: 0; }
 .metrics [data-slot=card-content]>span:first-child { font-size: 2.5rem; line-height: 1.2; font-weight: 850; overflow-wrap: anywhere; }
 .metrics [data-slot=badge] { font-size: 0.875rem; height: auto; padding: 2px 8px; border-color: color-mix(in oklch, var(--foreground) 7%, transparent); }
-.metrics [data-slot=card-footer] { font-size: 0.875rem; line-height: 1.6; padding-top: 12px; padding-bottom: 0; border-color: color-mix(in oklch, var(--foreground) 6%, transparent); background: transparent; }
+.metrics [data-slot=card-footer] { font-size: 0.875rem; line-height: 1.6; padding-top: 12px; padding-bottom: var(--card-spacing); border-color: color-mix(in oklch, var(--foreground) 6%, transparent); background: transparent; }
 .section-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; }
 .section-icon svg { width: 18px; height: 18px; }
 .subtle-link { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; min-height: 2.75rem; font-size: 0.9375rem; font-weight: 750; color: var(--muted-foreground); }

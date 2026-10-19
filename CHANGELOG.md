@@ -2,6 +2,19 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-10-19
+
+### Added
+- **Settings → Network**: choose "Just this computer" (127.0.0.1) or "My whole network" (0.0.0.0) and a port, then save and restart from the dashboard.
+- Copyable LAN addresses for sending notifications from other devices.
+- If a saved address can't be used at startup, Localert falls back to 127.0.0.1:8787 so you're never locked out. `--addr` still overrides the setting.
+
+### Fixed
+- Playground no longer gets cut off on phones.
+- Stat card menus line up with their titles, and card footers have proper padding.
+- App names use the available table width instead of truncating early.
+- Consistent "View all" links and no wrapping in the `--addr` notice.
+
 ## [0.4.1] - 2026-10-19
 
 ### Changed

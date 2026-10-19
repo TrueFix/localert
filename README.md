@@ -78,7 +78,7 @@ Try the **Playground** for a test notification. The dashboard's **Guide** has Py
 
 - **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you.
 - **Storage:** `localert.db` lives in `~/.config/localert` on Linux, `%AppData%\localert` on Windows, or `~/Library/Application Support/localert` on macOS.
-- **Your network:** `--addr 0.0.0.0:8787` lets apps on your LAN send notifications using this computer's IP and their app key.
+- **Your network:** open **Settings → Network** and choose **My whole network** so phones, servers, and other PCs can send notifications with their app key. Use trusted networks; first-time setup stays local-only.
 - **Password recovery:** run the executable with `--reset-password`, then open the dashboard locally to choose a new one.
 - **Uninstall:** run `sh install.sh --uninstall`, or `install.ps1 -Uninstall` on Windows. Your saved data is kept.
 

@@ -20,8 +20,8 @@ export function ApiKeysDataTable({ data }: { data: AppKey[] }) {
   const [busy, setBusy] = React.useState(false)
   const { refresh } = useLocalert()
   const columns = React.useMemo<ColumnDef<AppKey>[]>(() => [
-    { accessorKey: "name", header: "Application", size: 220, cell: ({ row }) => <div className="flex items-center gap-2.5"><span className="bg-muted flex size-8 shrink-0 items-center justify-center rounded-lg"><KeyRoundIcon className="text-muted-foreground size-3.5" /></span><span className="truncate font-medium">{row.original.name}</span></div> },
-    { accessorKey: "prefix", header: "API key", size: 200, cell: ({ row }) => <span className="text-muted-foreground font-mono text-xs">{row.original.prefix}</span> },
+    { accessorKey: "name", header: "Application", cell: ({ row }) => <div className="flex min-w-0 items-center gap-2.5" title={row.original.name}><span className="bg-muted flex size-8 shrink-0 items-center justify-center rounded-lg"><KeyRoundIcon className="text-muted-foreground size-3.5" /></span><span className="truncate font-medium">{row.original.name}</span></div> },
+    { accessorKey: "prefix", header: "API key", size: 190, cell: ({ row }) => <span className="text-muted-foreground font-mono text-xs">{row.original.prefix}</span> },
     { accessorKey: "last_used_at", header: "Last used", size: 160, cell: ({ row }) => <span className="text-muted-foreground whitespace-nowrap text-xs">{formatDate(row.original.last_used_at)}</span> },
     { accessorKey: "sent", header: "Sent", size: 70, cell: ({ row }) => <span className="tabular-nums">{row.original.sent.toLocaleString()}</span> },
     { id: "actions", size: 56, cell: ({ row }) => <div className="text-end"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Actions for ${row.original.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>{row.original.name}</DropdownMenuLabel><DropdownMenuItem variant="destructive" onClick={() => setRevoking(row.original)}><Trash2Icon />Revoke key</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div> },
@@ -41,7 +41,7 @@ export function ApiKeysDataTable({ data }: { data: AppKey[] }) {
   }
 
   return <>
-    <Card className="@container/card">
+    <Card className="@container/card gap-0 py-0">
       <CardContent className="flex flex-col p-0 [&_[data-slot=table-container]]:flex-1">
         <div className="flex min-h-14 flex-wrap items-center gap-3 border-b px-(--card-spacing) py-3">
           <InputGroup className="w-full max-w-56 shrink-0 @max-md/card:min-w-24 @max-md/card:flex-1 @max-md/card:basis-0">

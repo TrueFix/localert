@@ -367,3 +367,25 @@ func TestSettingsAndHistoryRequireAdminAndPersistValidatedPreferences(t *testing
 		t.Fatal("preferences pruned counters or failed to persist")
 	}
 }
+
+func TestNetworkSettingRequiresAdminValidAddressAndUnlockedFlag(t *testing.T) {
+	f := setup(t)
+	if response, _ := f.request(t, "PUT", "/api/admin/settings/network", `{"listen_address":"0.0.0.0:8787"}`, ""); response.StatusCode != 401 {
+		t.Fatal("anonymous network change accepted")
+	}
+	f.login(t)
+	if response, _ := f.request(t, "PUT", "/api/admin/settings/network", `{"listen_address":"10.0.0.1:8787"}`, ""); response.StatusCode != 400 {
+		t.Fatal("arbitrary interface accepted")
+	}
+	// The test fixture has no updater, so a valid address cannot restart.
+	if response, _ := f.request(t, "PUT", "/api/admin/settings/network", `{"listen_address":"0.0.0.0:8787"}`, ""); response.StatusCode != 503 {
+		t.Fatal("network change accepted without restart support")
+	}
+	if settings, _ := f.store.Settings(); settings.ListenAddress != store.DefaultListenAddress {
+		t.Fatal("address saved even though restart was unavailable")
+	}
+	response, data := f.request(t, "GET", "/api/admin/overview", "", "")
+	if response.StatusCode != 200 || !bytes.Contains(data, []byte(`"lan_addresses":`)) || !bytes.Contains(data, []byte(`"address_locked":false`)) {
+		t.Fatalf("overview missing network details: %s", data)
+	}
+}

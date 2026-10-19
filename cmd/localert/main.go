@@ -24,7 +24,7 @@ import (
 	"localert/web"
 )
 
-var version = "0.4.1"
+var version = "0.4.2"
 var defaultUpdateFeed = "https://github.com/TrueFix/localert/releases/latest/download/update-manifest.json"
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 }
 
 func run() error {
-	addr := flag.String("addr", "127.0.0.1:8787", "HTTP listen address (use 0.0.0.0:8787 for your network)")
+	addr := flag.String("addr", store.DefaultListenAddress, "HTTP listen address; overrides the Network setting in the dashboard")
 	dataDir := flag.String("data-dir", "", "state directory (default: user config directory / localert)")
 	open := flag.Bool("open", false, "open the dashboard in your default browser")
 	noOpen := flag.Bool("no-open", false, "disable automatic browser opening during first-run setup")
@@ -44,6 +44,12 @@ func run() error {
 	pidFile := flag.String("pid-file", "", "optional PID file used by the desktop launcher")
 	containerMode := flag.Bool("container", false, "use container-managed upgrades and JSON diagnostic logs")
 	flag.Parse()
+	explicitAddr := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "addr" {
+			explicitAddr = true
+		}
+	})
 	if *showVersion {
 		fmt.Println("Localert", version)
 		return nil
@@ -90,9 +96,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", *addr)
+	listenAddr := *addr
+	if !explicitAddr {
+		if settings, err := state.Settings(); err == nil && settings.ListenAddress != "" {
+			listenAddr = settings.ListenAddress
+		}
+	}
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil && !explicitAddr && listenAddr != store.DefaultListenAddress {
+		// Never lock users out: a saved address that cannot bind falls back to local-only.
+		slog.Warn("saved listen address unavailable; using local-only address", "address", listenAddr, "error", err)
+		listenAddr = store.DefaultListenAddress
+		listener, err = net.Listen("tcp", listenAddr)
+	}
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", *addr, err)
+		return fmt.Errorf("listen on %s: %w", listenAddr, err)
 	}
 	defer listener.Close()
 	if *pidFile != "" {
@@ -119,6 +137,11 @@ func run() error {
 		return fmt.Errorf("prepare icon cache: %w", err)
 	}
 	actualAddr := listener.Addr().String()
+	if requestedHost, _, _ := net.SplitHostPort(listenAddr); requestedHost == "0.0.0.0" {
+		// Go listens dual-stack ([::]); report the address the user chose.
+		_, port, _ := net.SplitHostPort(actualAddr)
+		actualAddr = net.JoinHostPort("0.0.0.0", port)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -140,7 +163,7 @@ func run() error {
 		},
 	})
 	defer updates.Close()
-	handler := server.New(server.Options{Store: state, Sender: notify.Native{}, Icons: icons, Assets: web.Assets(), Version: version, Address: actualAddr, Updater: updates})
+	handler := server.New(server.Options{Store: state, Sender: notify.Native{}, Icons: icons, Assets: web.Assets(), Version: version, Address: actualAddr, Updater: updates, AddressLocked: explicitAddr})
 	httpServer := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
 		WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10,
@@ -203,7 +226,11 @@ func run() error {
 		if err := state.Close(); err != nil {
 			return err
 		}
-		args := []string{"--addr", actualAddr, "--data-dir", absolute, "--no-open"}
+		// Without an explicit --addr, the restarted process reads the saved Network setting.
+		args := []string{"--data-dir", absolute, "--no-open"}
+		if explicitAddr {
+			args = append(args, "--addr", actualAddr)
+		}
 		if *containerMode {
 			args = append(args, "--container")
 		}

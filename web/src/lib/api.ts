@@ -30,10 +30,12 @@ export type Overview = {
   database_path: string
   settings: Settings
   history_total: number
+  address_locked: boolean
+  lan_addresses: string[]
 }
 
 export type Retention = { mode: "count" | "days" | "both" | "forever"; count: number; days: number }
-export type Settings = { retention: Retention; update_feed: string }
+export type Settings = { retention: Retention; update_feed: string; listen_address: string }
 export type UpdateStatus = { current_version: string; latest_version?: string; phase: "idle" | "checking" | "available" | "up_to_date" | "downloading" | "installing" | "restarting" | "error"; notes?: string; checked_at?: string; error?: string; downloaded: number; total: number; platform: string; container: boolean }
 
 export function retentionLabel(value: Retention) {

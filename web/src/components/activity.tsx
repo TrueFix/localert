@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { BellIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HistoryIcon, LoaderCircleIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react"
+import { ArrowRightIcon, BellIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HistoryIcon, LoaderCircleIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,7 @@ function EventRow({ event }: { event: Delivery }) {
 
 export function RecentActivity() {
   const { data } = useLocalert()
-  return <Card className="gap-0 py-0"><CardHeader className="border-b py-5"><CardTitle className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="section-icon bg-mint text-mint-foreground"><HistoryIcon /></span>Fresh little pings</span><a href="#activity" className="subtle-link">View all →</a></CardTitle><CardDescription>The latest from your desktop.</CardDescription></CardHeader><CardContent className="p-0">{data.events.length ? data.events.slice(0, 3).map(event => <EventRow key={event.id} event={event} />) : <div className="empty-nook"><LittleBell className="size-20" /><p>A little quiet. A lot of possibility.</p><small>Your first notification will feel right at home here.</small><Button variant="link" size="sm" asChild><a href="#playground">Send yourself a little hello →</a></Button></div>}</CardContent></Card>
+  return <Card className="gap-0 py-0"><CardHeader className="border-b py-5"><CardTitle className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="section-icon bg-mint text-mint-foreground"><HistoryIcon /></span>Fresh little pings</span><a href="#activity" className="subtle-link">View all<ArrowRightIcon /></a></CardTitle><CardDescription>The latest from your desktop.</CardDescription></CardHeader><CardContent className="p-0">{data.events.length ? data.events.slice(0, 3).map(event => <EventRow key={event.id} event={event} />) : <div className="empty-nook"><LittleBell className="size-20" /><p>A little quiet. A lot of possibility.</p><small>Your first notification will feel right at home here.</small><Button variant="link" size="sm" asChild><a href="#playground">Send yourself a little hello →</a></Button></div>}</CardContent></Card>
 }
 
 type HistoryPage = { events: Delivery[]; total: number; limit: number; offset: number }
