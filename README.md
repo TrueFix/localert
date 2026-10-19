@@ -24,6 +24,7 @@ One binary. Your computer. No extra runtime.
 - **History your way** — keep a count, a number of days, both, or everything.
 - **A fresh start in one click** — check for updates, upgrade, and restart from Settings.
 - **A cozy local home** — pastel colors, readable type, dark mode, and SQLite storage.
+- **Cloud Connect** *(coming soon)* — register with TrueFix cloud for a public HTTPS URL to your notification API, without opening ports on your router.
 
 The website, font, icons, and SQLite engine are all inside the executable. Your keys and history live on your computer. 💜
 
@@ -78,6 +79,7 @@ Try the **Playground** for a test notification. The dashboard's **Guide** has Py
 
 - **Updates:** Open **Settings → Software updates** to check for updates, upgrade, and restart. Your password, app keys, and history stay with you. Localert never updates itself in the background.
 - **Your network:** open **Settings → Network** and choose **My whole network** so phones, servers, and other PCs can send notifications with their app key. Use trusted networks; traffic is plain HTTP and first-time setup stays local-only. If a saved address can't be used, Localert falls back to `127.0.0.1:8787`. Starting with `--addr` overrides this setting.
+- **Cloud Connect:** open **Settings → Cloud Connect** to preview what’s coming—a TrueFix-managed public URL for your `/api/notify` endpoint. Registration and tunnel setup are not available yet; your data still stays local until you opt in.
 - **Password recovery:** run the executable with `--reset-password`, then open the dashboard locally to choose a new one. App keys and history are kept.
 - **Notifications need your desktop session.** Localert must run as your signed-in user. Do Not Disturb and OS notification settings still apply.
 - **Limits:** each app can send 60 notifications per minute, and all apps together 120 per minute. Extra requests get HTTP `429` with `Retry-After`.

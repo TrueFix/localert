@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-10-20
+
+### Added
+- **Settings → Cloud Connect** — preview of TrueFix-managed public URLs for `/api/notify` (registration and tunnel setup coming soon).
+- README notes on Cloud Connect and how it will relate to local and LAN modes.
+
 ## [0.5.0] - 2026-10-19
 
 Built to run quietly for years. Measured with 1,200 notifications plus repeated dashboard and asset requests:
@@ -83,6 +89,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.1]: https://github.com/TrueFix/localert/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/TrueFix/localert/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/TrueFix/localert/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/TrueFix/localert/compare/v0.4.0...v0.4.1

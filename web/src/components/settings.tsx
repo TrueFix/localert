@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
-import { ArrowDownToLineIcon, CheckIcon, CopyIcon, DownloadCloudIcon, HeartIcon, HistoryIcon, KeyRoundIcon, LoaderCircleIcon, MonitorIcon, RefreshCwIcon, RotateCcwIcon, SaveIcon, ShieldCheckIcon, SlidersHorizontalIcon, SparklesIcon, WifiIcon } from "lucide-react"
+import { ArrowDownToLineIcon, CheckIcon, CloudIcon, CopyIcon, DownloadCloudIcon, HeartIcon, HistoryIcon, KeyRoundIcon, LoaderCircleIcon, MonitorIcon, RefreshCwIcon, RotateCcwIcon, SaveIcon, ShieldCheckIcon, SlidersHorizontalIcon, SparklesIcon, WifiIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PageHeading } from "@/components/design"
 import { useLocalert } from "@/lib/context"
@@ -141,6 +142,25 @@ function splitAddress(value: string): [string, string] {
   return index < 0 ? ["127.0.0.1", "8787"] : [value.slice(0, index), value.slice(index + 1)]
 }
 
+function CloudConnectSettings() {
+  return <div className="flex flex-col gap-6">
+    <SectionHeader title="Cloud Connect" description="Register with TrueFix cloud and receive a public URL for your notifications—no port forwarding required." icon={CloudIcon} />
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/15 bg-lavender p-4">
+      <div className="space-y-1">
+        <p className="flex flex-wrap items-center gap-2 font-bold">Enable Cloud Connect <Badge variant="secondary">Coming soon</Badge></p>
+        <p className="text-muted-foreground text-sm leading-6">Sign in with your TrueFix account, link this Localert, and we’ll give you a stable HTTPS endpoint you can use from anywhere.</p>
+      </div>
+      <Switch id="cloud-connect" checked={false} disabled aria-label="Cloud Connect (coming soon)" />
+    </div>
+    <ul className="text-muted-foreground space-y-2 text-sm leading-6">
+      <li>A dedicated public URL for <code className="text-foreground">/api/notify</code>, managed by TrueFix.</li>
+      <li>Your app keys and notification history stay on this computer—cloud only routes traffic.</li>
+      <li>Works alongside local and LAN modes; you choose what fits each app.</li>
+    </ul>
+    <p className="rounded-xl bg-mint p-4 text-sm text-mint-foreground">Cloud Connect is on the roadmap. When it launches, you’ll turn it on here and follow a short setup flow—no reinstall required.</p>
+  </div>
+}
+
 function PasswordSettings() {
   const [current, setCurrent] = useState("")
   const [replacement, setReplacement] = useState("")
@@ -164,6 +184,6 @@ function InstanceSettings() {
 
 export function Settings() {
   const [tab, setTab] = useState("preferences")
-  const sections = [{ id: "preferences", label: "Preferences", icon: SlidersHorizontalIcon }, { id: "network", label: "Network", icon: WifiIcon }, { id: "updates", label: "Software updates", icon: DownloadCloudIcon }, { id: "security", label: "Security", icon: ShieldCheckIcon }, { id: "about", label: "About this nook", icon: MonitorIcon }]
-  return <div className="page-stack"><PageHeading eyebrow="MAKE YOURSELF AT HOME" title="Just the way you like it." description="A few thoughtful touches to make Localert feel like yours." /><Card className="settings-card"><Tabs value={tab} onValueChange={setTab} orientation="vertical" className="settings-tabs"><TabsList className="settings-tab-list">{sections.map(section => <TabsTrigger value={section.id} key={section.id}><section.icon />{section.label}</TabsTrigger>)}</TabsList><div className="settings-content"><TabsContent value="preferences"><RetentionSettings /></TabsContent><TabsContent value="network"><NetworkSettings /></TabsContent><TabsContent value="updates"><UpdateSettings /></TabsContent><TabsContent value="security"><PasswordSettings /></TabsContent><TabsContent value="about"><InstanceSettings /></TabsContent></div></Tabs></Card></div>
+  const sections = [{ id: "preferences", label: "Preferences", icon: SlidersHorizontalIcon }, { id: "network", label: "Network", icon: WifiIcon }, { id: "cloud", label: "Cloud Connect", icon: CloudIcon }, { id: "updates", label: "Software updates", icon: DownloadCloudIcon }, { id: "security", label: "Security", icon: ShieldCheckIcon }, { id: "about", label: "About this nook", icon: MonitorIcon }]
+  return <div className="page-stack"><PageHeading eyebrow="MAKE YOURSELF AT HOME" title="Just the way you like it." description="A few thoughtful touches to make Localert feel like yours." /><Card className="settings-card"><Tabs value={tab} onValueChange={setTab} orientation="vertical" className="settings-tabs"><TabsList className="settings-tab-list">{sections.map(section => <TabsTrigger value={section.id} key={section.id}><section.icon />{section.label}</TabsTrigger>)}</TabsList><div className="settings-content"><TabsContent value="preferences"><RetentionSettings /></TabsContent><TabsContent value="network"><NetworkSettings /></TabsContent><TabsContent value="cloud"><CloudConnectSettings /></TabsContent><TabsContent value="updates"><UpdateSettings /></TabsContent><TabsContent value="security"><PasswordSettings /></TabsContent><TabsContent value="about"><InstanceSettings /></TabsContent></div></Tabs></Card></div>
 }
