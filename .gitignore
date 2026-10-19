@@ -1,0 +1,14 @@
+/bin/
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+/web/test-results/
+/web/playwright-report/
+/web/components.json.bak
+.DS_Store
+*.exe
+__pycache__/
+/localert-data/
+*.db
+*.db-wal
+*.db-shm
