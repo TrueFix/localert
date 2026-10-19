@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build and publish (e.g. v0.5.7)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,12 +23,12 @@ defaults:
     shell: bash
 
 env:
-  RELEASE_TAG: ${{ github.ref_name }}
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   build:
     name: Build and test release
-    if: github.event.created && !github.event.deleted
+    if: github.event_name == 'workflow_dispatch' || !github.event.deleted
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
@@ -33,6 +39,7 @@ jobs:
       - name: Check out the tagged source
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           persist-credentials: false
 
       - name: Read release metadata
@@ -92,7 +99,7 @@ jobs:
       - name: Build binaries, installers, and update manifest
         env:
           VERSION: ${{ steps.metadata.outputs.version }}
-          RELEASE_BASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/
+          RELEASE_BASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}/
           UPDATE_FEED_URL: ${{ github.server_url }}/${{ github.repository }}/releases/latest/download/update-manifest.json
         run: |
           make release VERSION="$VERSION" RELEASE_BASE_URL="$RELEASE_BASE_URL" UPDATE_FEED_URL="$UPDATE_FEED_URL"
@@ -146,7 +153,7 @@ jobs:
       - name: Check out tagged source for release notes
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 

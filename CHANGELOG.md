@@ -4,6 +4,9 @@ All notable changes are recorded here. Versions follow [Semantic Versioning](htt
 
 ## [0.5.7] - 2026-10-20
 
+### Fixed
+- **Release workflow** runs when a tag is force-updated (not only on first tag create).
+
 ### Added
 - **`localert --reload`** — gracefully restart the running instance (SIGUSR1 on Linux/macOS, local HTTP fallback on Windows). Uses the installer PID file unless you pass `--pid-file`.
 
