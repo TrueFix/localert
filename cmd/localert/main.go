@@ -251,23 +251,7 @@ func run() error {
 	fmt.Fprintln(out, "  Press Ctrl+C to stop.")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if runtime.GOOS != "windows" {
-		reloadSignals := make(chan os.Signal, 2)
-		signal.Notify(reloadSignals, syscall.SIGUSR1)
-		go func() {
-			for {
-				select {
-				case <-reloadSignals:
-					select {
-					case restartRequests <- struct{}{}:
-					default:
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
+	watchReloadSignals(ctx, restartRequests)
 	go maintain(ctx, state, icons, func() {
 		select {
 		case restartRequests <- struct{}{}:

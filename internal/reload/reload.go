@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"localert/internal/store"
@@ -69,17 +68,6 @@ func dashboardHost(listen string) string {
 		host = "127.0.0.1"
 	}
 	return "http://" + net.JoinHostPort(host, port)
-}
-
-func signalReload(pid int) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	if runtime.GOOS == "windows" {
-		return ErrReload
-	}
-	return process.Signal(syscall.SIGUSR1)
 }
 
 func httpReload(ctx context.Context, base string) error {
