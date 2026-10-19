@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.3] - 2026-10-20
+
+### Fixed
+- Dashboard **Restart**, **Upgrade & restart**, and **Save & restart** (network) work reliably when Localert was installed via the launcher script (stdio redirection no longer breaks restart).
+- Linux/macOS launcher passes **`--no-open`** on autostart so restarts stay quiet.
+
 ## [0.5.2] - 2026-10-20
 
 ### Changed
@@ -95,6 +101,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.3]: https://github.com/TrueFix/localert/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/TrueFix/localert/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/TrueFix/localert/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/TrueFix/localert/compare/v0.4.2...v0.5.0

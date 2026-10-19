@@ -133,9 +133,20 @@ class StartupTests(unittest.TestCase):
         self.request("POST", "/api/admin/setup", {"password": "restart user password"})
         created = self.request("POST", "/api/admin/keys", {"name": "Restart-proof app"})
         previous = self.request("GET", "/api/health")["instance_id"]
+        old_pid = self.process.pid
         self.request("POST", "/api/admin/restart")
         self.wait_for_restart(previous)
-        self.assertEqual((self.root / "localert.pid").read_text().strip(), str(self.process.pid))
+        self.process.wait(timeout=10)
+        new_pid = int((self.root / "localert.pid").read_text().strip())
+        self.assertNotEqual(new_pid, old_pid)
+        os.kill(new_pid, 0)
+        self.process = None
+        def stop_restarted():
+            try:
+                os.kill(new_pid, 15)
+            except OSError:
+                pass
+        self.addCleanup(stop_restarted)
         self.request("POST", "/api/admin/login", {"password": "restart user password"})
         self.assertEqual(self.request("GET", "/api/admin/keys")["keys"][0]["id"], created["key"]["id"])
 
@@ -260,6 +271,9 @@ class StartupTests(unittest.TestCase):
         previous = self.request("GET", "/api/health")["instance_id"]
         self.request("POST", "/api/admin/updates/install")
         self.wait_for_restart(previous, "99.0.0")
+        if self.process and self.process.poll() is None:
+            self.process.wait(timeout=10)
+        self.process = None
         self.request("POST", "/api/admin/login", {"password": "upgrade user password"})
         overview = self.request("GET", "/api/admin/overview")
         self.assertEqual(overview["keys"][0]["id"], created["key"]["id"])

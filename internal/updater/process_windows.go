@@ -11,9 +11,13 @@ func hideConsole(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{HideWin
 func Restart(executable string, arguments []string) error {
 	cmd := exec.Command(executable, arguments...)
 	hideConsole(cmd)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	_ = cmd.Process.Release()
+	os.Exit(0)
+	return nil
 }

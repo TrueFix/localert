@@ -154,11 +154,10 @@ mv -f "$temporary" "$target"
 cat > "$launcher" <<EOF
 #!/bin/sh
 umask 077
-printf '%s\n' "\$\$" > $(quote_sh "$pid_file")
 crash=$(quote_sh "$log_dir/crash.log")
 # Only crash traces reach stderr; keep that file small too.
 if [ -f "\$crash" ] && [ "\$(wc -c < "\$crash")" -gt 1048576 ]; then mv -f "\$crash" "\$crash.1"; fi
-exec $(quote_sh "$target") --data-dir $(quote_sh "$data_dir") --pid-file $(quote_sh "$pid_file") --log-file $(quote_sh "$log_file") >/dev/null 2>> "\$crash"
+exec $(quote_sh "$target") --data-dir $(quote_sh "$data_dir") --no-open --pid-file $(quote_sh "$pid_file") --log-file $(quote_sh "$log_file") >/dev/null 2>> "\$crash"
 EOF
 chmod 700 "$launcher"
 
