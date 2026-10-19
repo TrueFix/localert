@@ -175,24 +175,15 @@ jobs:
             test -s "$asset"
           done
 
-          existing="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
-          if [[ "$existing" == 'false' ]]; then
-            printf 'Release %s is already published.\n' "$RELEASE_TAG"
-            exit 0
-          elif [[ "$existing" == 'true' ]]; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" \
-              --verify-tag --draft \
-              --title "Localert $RELEASE_TAG 🔔" \
-              --generate-notes
+          prerelease_flag=""
+          if [[ "$PRERELEASE" == 'true' ]]; then
+            prerelease_flag="--prerelease"
           fi
 
-          release_id="$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" --jq '.id')"
-          latest='legacy'
-          if [[ "$PRERELEASE" == 'true' ]]; then
-            latest='false'
-          fi
-          gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
-            -F draft=false -F "prerelease=$PRERELEASE" -f "make_latest=$latest" \
-            --jq '.html_url'
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --verify-tag \
+            --title "Localert $RELEASE_TAG 🔔" \
+            --generate-notes \
+            $prerelease_flag
+
+          echo "https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
