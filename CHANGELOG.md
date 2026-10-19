@@ -2,6 +2,13 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-10-19
+
+### Changed
+- Improved notification icons: bell, checkmark, exclamation, X mark, and info symbols.
+- Icons are now 128×128 with rounded colored backgrounds.
+- `--open` flag now defaults to true (browser opens automatically).
+
 ## [0.4.0] - 2026-10-19
 
 ### Fixed
