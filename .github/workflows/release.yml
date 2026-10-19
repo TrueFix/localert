@@ -31,7 +31,7 @@ jobs:
       source_sha: ${{ steps.metadata.outputs.source_sha }}
     steps:
       - name: Check out the tagged source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -76,16 +76,16 @@ jobs:
           PY
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ steps.metadata.outputs.go_version }}
           check-latest: true
           cache: true
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -117,7 +117,7 @@ jobs:
         run: sha256sum --check --strict SHA256SUMS
 
       - name: Save release assets
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v4
         with:
           name: localert-release
           overwrite: true
@@ -134,20 +134,17 @@ jobs:
             bin/install.ps1
             bin/SHA256SUMS
             bin/update-manifest.json
-            bin/compose.yml
-            bin/CHANGELOG.md
-            bin/release-notes.md
 
   publish:
     name: Publish GitHub release
-    needs: [build, container]
+    needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
       - name: Download tested release assets
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@v4
         with:
           name: localert-release
           path: dist
@@ -173,7 +170,6 @@ jobs:
             localert-windows-amd64.exe
             localert-macos-amd64 localert-macos-arm64
             install.sh install.ps1 SHA256SUMS update-manifest.json
-            compose.yml CHANGELOG.md
           )
           for asset in "${assets[@]}"; do
             test -s "$asset"
@@ -187,8 +183,9 @@ jobs:
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
-              --verify-tag --draft --notes-file release-notes.md \
-              --title "Localert $RELEASE_TAG 🔔"
+              --verify-tag --draft \
+              --title "Localert $RELEASE_TAG 🔔" \
+              --generate-notes
           fi
 
           release_id="$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" --jq '.id')"
@@ -199,67 +196,3 @@ jobs:
           gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
             -F draft=false -F "prerelease=$PRERELEASE" -f "make_latest=$latest" \
             --jq '.html_url'
-
-  container:
-    name: Publish multi-architecture container
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Container tags
-        id: image
-        env:
-          REPOSITORY: ${{ github.repository }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
-        run: |
-          image="ghcr.io/${REPOSITORY,,}"
-          tags="$image:$RELEASE_TAG"
-          if [[ "$PRERELEASE" == 'false' ]]; then tags="$tags,$image:latest"; fi
-          printf 'tags=%s\n' "$tags" >> "$GITHUB_OUTPUT"
-      - name: Build native image for smoke testing
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          tags: localert:smoke
-          build-args: VERSION=${{ needs.build.outputs.version }}
-          cache-from: type=gha
-      - name: Check container startup and local setup
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          trap 'docker logs localert-smoke; docker rm -f localert-smoke' EXIT
-          docker run -d --name localert-smoke --network host localert:smoke \
-            --addr 127.0.0.1:18787 --data-dir /data --no-open --container
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18787/api/health; then break; fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:18787/api/health | jq -e --arg version "$VERSION" '.version == $version'
-          curl -fsS http://127.0.0.1:18787/api/admin/setup | jq -e '.setup_required and .local_setup_allowed'
-          curl -fsS -X POST http://127.0.0.1:18787/api/admin/setup \
-            -H 'Content-Type: application/json' -d '{"password":"temporary container test"}' | jq -e '.authenticated'
-      - name: Build and publish image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.image.outputs.tags }}
-          build-args: VERSION=${{ needs.build.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
