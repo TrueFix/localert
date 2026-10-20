@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.9] - 2026-10-20
+
+### Fixed
+- Added the missing **Play notification sound** toggle to the Playground. The toggle updates the live JSON request body and works for both app-key notifications and dashboard test notifications.
+- Browser coverage verifies sound enabled and disabled in outgoing Playground requests.
+
 ## [0.5.8] - 2026-10-20
 
 ### Added
@@ -135,6 +141,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.9]: https://github.com/TrueFix/localert/compare/v0.5.8...v0.5.9
 [0.5.8]: https://github.com/TrueFix/localert/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/TrueFix/localert/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/TrueFix/localert/compare/v0.5.5...v0.5.6
