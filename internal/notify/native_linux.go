@@ -20,6 +20,10 @@ func (Native) Send(ctx context.Context, n Notification, iconPath string) error {
 	// Send pixels over D-Bus: the desktop notification daemon cannot read a
 	// container's private filesystem, even when its session bus is shared.
 	hints := map[string]dbus.Variant{"urgency": dbus.MakeVariant(byte(1))}
+	hints["suppress-sound"] = dbus.MakeVariant(!n.Sound)
+	if n.Sound {
+		hints["sound-name"] = dbus.MakeVariant("message-new-instant")
+	}
 	file, err := os.Open(iconPath)
 	if err != nil {
 		return err

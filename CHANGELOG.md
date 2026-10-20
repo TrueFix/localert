@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.8] - 2026-10-20
+
+### Added
+- Optional **`sound`** boolean in the notification API: `true` requests a native notification sound on Linux, macOS, and Windows; omitted or `false` requests silent delivery. Desktop sound support, volume, and Do Not Disturb settings apply.
+- Sound field documentation in the README and dashboard API guide.
+
 ## [0.5.7] - 2026-10-20
 
 ### Fixed
@@ -129,6 +135,7 @@ Idle remains at 0% CPU and about 3 MB of private memory.
 ### Added
 - Native notification HTTP API, per-app keys, and embedded web dashboard.
 
+[0.5.8]: https://github.com/TrueFix/localert/compare/v0.5.7...v0.5.8
 [0.5.7]: https://github.com/TrueFix/localert/compare/v0.5.6...v0.5.7
 [0.5.6]: https://github.com/TrueFix/localert/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/TrueFix/localert/compare/v0.5.4...v0.5.5

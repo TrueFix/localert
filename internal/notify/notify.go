@@ -7,6 +7,7 @@ type Notification struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
 	Icon    string `json:"icon"`
+	Sound   bool   `json:"sound"`
 }
 
 type Sender interface {

@@ -73,6 +73,19 @@ curl -X POST http://127.0.0.1:8787/api/notify \
 
 Use `bell`, `info`, `success`, `warning`, or `error` for the icon, or send an HTTPS image URL or base64 PNG/JPEG.
 
+For important notifications, add the optional boolean `"sound": true` to request a system notification sound:
+
+```json
+{
+  "title": "Action needed",
+  "message": "Your deployment needs attention.",
+  "icon": "warning",
+  "sound": true
+}
+```
+
+Omit `sound` or use `false` for silent delivery. Sound is handled by the native desktop notification system on Linux, macOS, and Windows; volume, Do Not Disturb, and desktop sound support still apply.
+
 Try the **Playground** for a test notification. The dashboard's **Guide** has Python and JavaScript examples and API details.
 
 ## 🌷 A few things worth knowing

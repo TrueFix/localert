@@ -19,9 +19,13 @@ func (Native) Send(ctx context.Context, n Notification, iconPath string) error {
 		_ = xml.EscapeText(&b, []byte(s))
 		return b.String()
 	}
+	audio := `<audio silent="true"/>`
+	if n.Sound {
+		audio = `<audio src="ms-winsoundevent:Notification.Default"/>`
+	}
 	toast := `<toast><visual><binding template="ToastGeneric"><text>` + escape(n.Title) +
 		`</text><text>` + escape(n.Message) + `</text><image placement="appLogoOverride" src="` +
-		escape(iconPath) + `"/></binding></visual></toast>`
+		escape(iconPath) + `"/></binding></visual>` + audio + `</toast>`
 	script := `$ErrorActionPreference = 'Stop'
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null

@@ -171,6 +171,41 @@ func TestFullAppKeyLifecycleAndSessionIsolation(t *testing.T) {
 	}
 }
 
+func TestNotificationSoundOption(t *testing.T) {
+	f := setup(t)
+	_, key, err := f.store.CreateKey("Important alerts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		field string
+		want  bool
+	}{
+		{"omitted", "", false},
+		{"enabled", `,"sound":true`, true},
+		{"disabled", `,"sound":false`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			payload := `{"title":"Alert","message":"Needs attention"` + test.field + `}`
+			if resp, body := f.request(t, "POST", "/api/notify", payload, key); resp.StatusCode != 200 {
+				t.Fatalf("notify: %d %s", resp.StatusCode, body)
+			}
+			f.sender.mu.Lock()
+			defer f.sender.mu.Unlock()
+			if got := f.sender.sent[len(f.sender.sent)-1].Sound; got != test.want {
+				t.Fatalf("native sender sound = %v, want %v", got, test.want)
+			}
+		})
+	}
+	for _, value := range []string{`"true"`, `"alarm"`, `1`, `{}`} {
+		payload := `{"title":"Alert","message":"Needs attention","sound":` + value + `}`
+		if resp, body := f.request(t, "POST", "/api/notify", payload, key); resp.StatusCode != 400 {
+			t.Fatalf("invalid sound %s: %d %s", value, resp.StatusCode, body)
+		}
+	}
+}
+
 func TestDeliveryFailureIsReportedAndRecorded(t *testing.T) {
 	f := setup(t)
 	f.sender.err = errors.New("desktop is unavailable")
