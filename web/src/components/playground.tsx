@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CodeBlock } from "@/components/code-block"
 import { api, ApiError, errorMessage } from "@/lib/api"
@@ -19,12 +20,13 @@ export function Playground() {
   const [message, setMessage] = useState("Your apps and your desktop are now connected.")
   const [icon, setIcon] = useState("bell")
   const [customIcon, setCustomIcon] = useState("")
+  const [sound, setSound] = useState(false)
   const [appKey, setAppKey] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string; detail?: string } | null>(null)
   const { refresh } = useLocalert()
   const Icon = iconChoices[icon as keyof typeof iconChoices] || BellIcon
-  const payload = { icon: icon === "custom" ? customIcon : icon, title, message }
+  const payload = { icon: icon === "custom" ? customIcon : icon, title, message, sound }
 
   async function send(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setResult(null)
@@ -47,6 +49,7 @@ export function Playground() {
         <div className="space-y-2"><Label htmlFor="notification-message">Message</Label><Textarea id="notification-message" className="min-h-28 resize-y" value={message} onChange={e => setMessage(e.target.value)} maxLength={4096} required /><p className="text-muted-foreground text-right text-xs">{message.length.toLocaleString()} / 4,096</p></div>
         <div className="space-y-2"><Label htmlFor="notification-icon">Icon</Label><Select value={icon} onValueChange={setIcon}><SelectTrigger className="w-full" id="notification-icon"><SelectValue /></SelectTrigger><SelectContent>{Object.keys(iconChoices).map(value => <SelectItem key={value} value={value}><span className="capitalize">{value}</span></SelectItem>)}<SelectItem value="custom">Custom image</SelectItem></SelectContent></Select></div>
         {icon === "custom" && <div className="space-y-2"><Label htmlFor="custom-icon">Image URL or data URL</Label><Input id="custom-icon" value={customIcon} onChange={e => setCustomIcon(e.target.value)} placeholder="https://example.com/icon.png" required /><p className="text-muted-foreground text-xs">PNG or JPEG, up to 1 MiB and 1024 × 1024 pixels.</p></div>}
+        <div className="flex items-center justify-between gap-4 rounded-xl border p-4"><div className="space-y-2"><Label htmlFor="notification-sound">Play notification sound</Label><p id="notification-sound-description" className="text-muted-foreground text-xs leading-5">Request a system sound for important alerts. Volume, Do Not Disturb, and desktop sound support still apply.</p></div><Switch id="notification-sound" checked={sound} onCheckedChange={setSound} aria-describedby="notification-sound-description" /></div>
         <div className="space-y-2"><Label htmlFor="test-app-key">App key <span className="text-muted-foreground font-normal">(optional)</span></Label><Input id="test-app-key" type="password" value={appKey} onChange={e => setAppKey(e.target.value)} placeholder="la_…" autoComplete="off" /><p className="text-muted-foreground text-xs">Leave blank to send as “Dashboard test”. Add a key to test an app’s authentication.</p></div>
         <Button type="submit" disabled={busy || !title.trim() || !message.trim()} className="w-full">{busy ? <LoaderCircleIcon className="animate-spin" /> : <SendIcon />}{busy ? "Sending…" : "Send to my desktop"}</Button>
         {result && <div role="status" className={`rounded-lg border p-3 text-sm ${result.ok ? "border-status/20 bg-status-muted text-status" : "border-destructive/20 bg-destructive/5 text-destructive"}`}><p>{result.text}</p>{result.detail && <p className="mt-2 break-words font-mono text-xs opacity-80">{result.detail}</p>}</div>}
